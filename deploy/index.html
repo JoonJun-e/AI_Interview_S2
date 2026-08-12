@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 면접 시스템</title>
+<style>
+  :root{
+    --bg:#eef1f6; --panel:#fff; --ink:#1b2130; --sub:#6b7280; --line:#e5e7eb;
+    --accent:#3b5bdb; --accent-dark:#2f4ac0; --speak:#22c55e; --rec:#ef4444;
+    --gut:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Apple SD Gothic Neo","Pretendard","Noto Sans KR",sans-serif;
+    background:var(--bg);color:var(--ink);min-height:100vh;display:flex;
+    align-items:center;justify-content:center;padding:16px}
+  .screen{display:none;width:100%;max-width:1120px}
+  .screen.active{display:block}
+  .card{background:var(--panel);border-radius:16px;padding:38px;
+    box-shadow:0 4px 26px rgba(20,30,60,.08);max-width:640px;margin:0 auto}
+  .card.wide{max-width:860px}
+  h1{font-size:23px;margin-bottom:8px}
+  h2{font-size:16px;margin:22px 0 8px}
+  p.sub{color:var(--sub);font-size:14px;line-height:1.65}
+  ul.guide{margin:6px 0 0 18px;font-size:14px;line-height:1.9;color:#374151}
+  ul.guide b{color:var(--ink)}
+  label{display:block;font-size:13px;color:var(--sub);margin:16px 0 6px}
+  input[type=text]{width:100%;padding:12px;border:1px solid var(--line);
+    border-radius:9px;font-size:15px}
+  input[type=text]:focus{outline:none;border-color:var(--accent)}
+  .opt-group{display:flex;gap:8px}
+  .opt-group button{flex:1;padding:12px 6px;border:1.5px solid var(--line);background:#fff;
+    border-radius:10px;cursor:pointer;font-size:13.5px;transition:all .15s}
+  .opt-group button.sel{border-color:var(--accent);background:#eef2ff;font-weight:700}
+  .btn{padding:13px 30px;background:var(--accent);color:#fff;border:none;border-radius:10px;
+    font-size:15px;font-weight:700;cursor:pointer;transition:background .15s}
+  .btn:hover{background:var(--accent-dark)}
+  .btn:disabled{background:#c3c8d4;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent);border:1.5px solid var(--accent);
+    font-weight:600;padding:10px 18px;font-size:13.5px}
+  .btn.ghost:hover{background:#eef2ff}
+  .btn-row{display:flex;gap:10px;justify-content:center;margin-top:26px;align-items:center;flex-wrap:wrap}
+  .note{font-size:12.5px;color:var(--sub);line-height:1.55;margin-top:10px}
+  .divider{height:1px;background:var(--line);margin:22px 0}
+
+  /* setup */
+  .setup-grid{display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap}
+  .setup-col{flex:1;min-width:240px}
+  #camPreview{width:100%;aspect-ratio:16/9;border-radius:11px;background:#12151c;
+    object-fit:cover;transform:scaleX(-1)}
+  .meter{height:14px;background:#e6e9ef;border-radius:8px;overflow:hidden;margin-top:10px}
+  .meter>div{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#84cc16);transition:width .08s}
+  .chk{font-size:13px;margin-top:8px;color:var(--sub)}
+  .chk.ok{color:#15803d;font-weight:700}
+  .chk.bad{color:#b91c1c;font-weight:700}
+
+  /* ══════════ interview ══════════ */
+  .stage{position:relative;background:var(--panel);border-radius:16px;overflow:hidden;
+    box-shadow:0 4px 26px rgba(20,30,60,.08)}
+  .stage-inner{transition:filter .35s,opacity .35s}
+  .stage-inner.blurred{filter:blur(6px);opacity:.45;pointer-events:none}
+  .topbar{display:flex;align-items:center;justify-content:space-between;
+    padding:13px 18px;border-bottom:1px solid var(--line)}
+  .phase{font-size:12.5px;font-weight:700;padding:5px 12px;border-radius:7px;
+    background:#eef2ff;color:var(--accent)}
+  .phase.rec{background:#fee2e2;color:var(--rec)}
+  .phase.save{background:#f3f4f6;color:var(--sub)}
+  .tval{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+  .tval.warn{color:var(--rec)}
+  .qidx{font-size:13px;color:var(--sub);font-variant-numeric:tabular-nums}
+
+  .body-pad{padding:var(--gut) 18px 18px}
+
+  /* ① 면접관 블록 : 메인 + 서브 2개, 바닥선 일치 */
+  .panel-block{display:flex;gap:var(--gut);align-items:stretch}
+  .mainstage{flex:1;min-width:0;aspect-ratio:16/9;position:relative;border-radius:12px;
+    overflow:hidden;background:#1c2029;border:3px solid #d3d9e4;
+    transition:border-color .2s,box-shadow .2s}
+  .mainstage.speaking{border:5px solid var(--speak);
+    box-shadow:0 0 0 4px rgba(34,197,94,.18)}
+  .subrail{flex:0 0 236px;display:flex;flex-direction:column;gap:var(--gut)}
+  .subrail .slot{flex:1;position:relative;border-radius:12px;overflow:hidden;
+    background:#20242e;border:2px solid var(--line);opacity:.82;transition:opacity .25s}
+
+  /* ② 구분선 */
+  .section-div{height:1px;background:var(--line);margin:var(--gut) 0}
+
+  /* ③ 질문 + 지원자 : 윗선·아랫선 일치 */
+  .lower-row{display:flex;gap:var(--gut);align-items:stretch;min-height:134px}
+  .qbox{flex:1;min-width:0;padding:20px 24px;background:#f5f6fa;
+    border:1px solid var(--line);border-radius:12px;display:flex;
+    flex-direction:column;justify-content:center}
+  .qbox .q{font-size:17px;line-height:1.6;font-weight:600}
+  .selfcam{flex:0 0 236px;position:relative;border-radius:12px;overflow:hidden;
+    background:#14171e;border:2px solid #22c55e33}
+
+  /* ④ 컨트롤 바 : 전체 폭 */
+  .controlbar{margin-top:var(--gut);padding:13px 16px;border:1px solid var(--line);
+    border-radius:12px;background:#f9fafc;display:flex;align-items:center;
+    justify-content:center;gap:14px;min-height:62px}
+  .ctrl-btns{display:flex;gap:10px;justify-content:center}
+
+  /* 타일 공통 */
+  .tile{position:absolute;inset:0;overflow:hidden;background:#20242e}
+  .tile img,.tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .tile video{opacity:0;transition:opacity .2s}
+  .tile video.show{opacity:1}
+  .nameplate{position:absolute;left:12px;bottom:11px;z-index:4;color:#fff}
+  .nm{font-size:16px;font-weight:800;text-shadow:0 1px 6px rgba(0,0,0,.7);line-height:1.25}
+  .rl{font-size:12px;opacity:.88;text-shadow:0 1px 6px rgba(0,0,0,.7)}
+  .badge{position:absolute;left:12px;top:11px;z-index:4;display:none;align-items:center;gap:6px;
+    font-size:11.5px;font-weight:700;color:#d6f5e2;background:rgba(16,80,44,.72);
+    border:1px solid rgba(34,197,94,.6);padding:4px 11px;border-radius:7px}
+  .badge i{width:6px;height:6px;border-radius:50%;background:var(--speak);animation:blink 1.2s infinite}
+  .speak-ind{position:absolute;right:12px;bottom:12px;z-index:4;display:none;gap:3px;
+    align-items:flex-end;height:22px}
+  .speak-ind span{width:4px;background:var(--speak);border-radius:2px;
+    animation:eq .5s ease-in-out infinite alternate}
+  .speak-ind span:nth-child(1){height:8px}
+  .speak-ind span:nth-child(2){height:18px;animation-delay:.12s}
+  .speak-ind span:nth-child(3){height:12px;animation-delay:.26s}
+  .speak-ind span:nth-child(4){height:20px;animation-delay:.38s}
+  @keyframes eq{from{transform:scaleY(.35)}to{transform:scaleY(1)}}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  #mainStage .tile.speaking .badge{display:flex}
+  #mainStage .tile.speaking .speak-ind{display:flex}
+  #mainStage .tile.speaking img{animation:breathe 3s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scale(1.008)}50%{transform:scale(1.028)}}
+  .subrail .nm{font-size:13.5px}
+  .subrail .rl{font-size:11.5px}
+  .subrail .nameplate{left:10px;bottom:9px}
+  .subrail .badge,.subrail .speak-ind{display:none!important}
+
+  /* ── 형태 없음(Agent X) : 카메라 창 없이 원형 + 파동만 ── */
+  .voice-panel{display:none;align-items:center;justify-content:center;gap:64px;
+    padding:44px 20px;min-height:236px;border:1px solid var(--line);
+    border-radius:12px;background:#f5f6fa}
+  .voice-panel.on{display:flex}
+  .vc{display:flex;flex-direction:column;align-items:center;gap:14px}
+  .vc .dot{width:88px;height:88px;border-radius:50%;background:#d5d9e3;
+    display:flex;align-items:center;justify-content:center;transition:all .3s}
+  .vc .dot svg{width:34px;height:34px;fill:#8b93a5;transition:fill .3s}
+  .vc.speaking .dot{background:var(--speak);
+    box-shadow:0 0 0 10px rgba(34,197,94,.16);animation:pulse 1.7s ease-in-out infinite}
+  .vc.speaking .dot svg{fill:#fff}
+  @keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+  .vc .vlabel{font-size:13.5px;color:var(--sub);font-weight:600}
+  .vc.speaking .vlabel{color:#15803d;font-weight:800}
+  .vwave{display:flex;align-items:flex-end;gap:4px;height:22px;opacity:0;transition:opacity .2s}
+  .vc.speaking .vwave{opacity:1}
+  .vwave span{width:4px;background:var(--accent);border-radius:2px;
+    animation:eq .5s ease-in-out infinite alternate}
+  .vwave span:nth-child(1){height:8px}
+  .vwave span:nth-child(2){height:18px;animation-delay:.12s}
+  .vwave span:nth-child(3){height:12px;animation-delay:.26s}
+  .vwave span:nth-child(4){height:20px;animation-delay:.38s}
+  .vwave span:nth-child(5){height:10px;animation-delay:.5s}
+  .vwave span{background:var(--speak)}
+
+  /* 지원자 */
+  .selfcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  .selfcam .nameplate{left:11px;bottom:10px}
+  .selfcam .nm{font-size:14px}
+  .recdot{position:absolute;right:11px;top:10px;z-index:5;display:none;align-items:center;gap:5px;
+    font-size:11.5px;font-weight:700;color:#fff;background:rgba(185,28,28,.88);
+    padding:4px 10px;border-radius:7px}
+  .selfcam.recording .recdot{display:flex}
+  .selfcam.recording{border-color:var(--rec)}
+  .recdot i{width:6px;height:6px;border-radius:50%;background:#fff;animation:blink 1s infinite}
+  .no-cam{color:#9aa2b1;font-size:12px;height:100%;display:flex;align-items:center;justify-content:center}
+
+  /* 저장 오버레이 */
+  .save-overlay{position:absolute;inset:0;z-index:30;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:26px}
+  .save-overlay.on{display:flex}
+  .save-overlay.full{background:#fff;gap:0}
+  .eval-video{width:100%;height:100%;object-fit:contain;background:#fff}
+  .save-overlay p{font-size:19px;color:#3d4354}
+  .ring{width:66px;height:66px;border:6px solid #e3e5f2;border-top-color:#5b5fd6;
+    border-radius:50%;animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .count{width:104px;height:104px;border-radius:50%;border:5px solid var(--accent);
+    display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:800;
+    color:var(--accent);font-variant-numeric:tabular-nums;background:#fff}
+
+  /* 브랜드 */
+  .brandbar{display:flex;align-items:center;justify-content:space-between;
+    padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:20px}
+  .brandbar img{height:34px}
+  .brand-tag{font-size:12px;color:var(--sub);letter-spacing:.03em}
+
+  /* 안내 화면 : 2단으로 짧게 */
+  .notice-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .nblock{border:1px solid var(--line);border-radius:12px;padding:15px 17px;background:#f8f9fc}
+  .nblock h3{font-size:13px;font-weight:800;color:var(--accent);margin-bottom:7px;
+    letter-spacing:.02em}
+  .nblock p{font-size:13.5px;line-height:1.68;color:#374151}
+  .nblock p+p{margin-top:7px}
+  .nblock b{color:var(--ink)}
+  .nblock .hl{color:var(--accent);font-weight:700}
+  .nblock.span2{grid-column:1 / -1}
+  @media (max-width:780px){ .notice-grid{grid-template-columns:1fr} }
+
+  /* 결과 화면 */
+  .result-card{max-width:660px;margin:0 auto;border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;background:#fff}
+  .result-head{padding:20px 24px 16px;border-bottom:3px solid var(--accent)}
+  .result-head h2{font-size:19px;font-weight:800;line-height:1.45;margin:0}
+  .result-head .fail{color:#dc2626}
+  .result-body{padding:20px 24px 22px;font-size:14px;line-height:1.75;color:#374151}
+  .result-body p+p{margin-top:13px}
+  .result-body b{color:var(--ink)}
+  .result-sign{display:flex;align-items:flex-end;justify-content:space-between;
+    margin-top:20px;gap:16px}
+  .result-sign .who{font-size:13.5px;color:var(--sub);line-height:1.6}
+  .result-sign img{height:40px}
+
+  .spinner{width:54px;height:54px;border:5px solid #dfe3ec;border-top-color:var(--accent);
+    border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 22px}
+  .prog{height:7px;background:#e6e9ef;border-radius:6px;overflow:hidden;margin-top:20px}
+  .prog>div{height:100%;width:0%;background:var(--accent);transition:width .3s linear}
+  .result-badge{display:inline-block;padding:9px 22px;border-radius:999px;font-weight:800;
+    font-size:15px;background:#fee2e2;color:#b91c1c;margin-bottom:18px}
+  .dl-list{margin-top:14px;text-align:left;font-size:13.5px}
+  .dl-list a{display:inline-block;margin:3px 6px 3px 0;color:var(--accent);text-decoration:none;
+    border:1px solid var(--line);padding:5px 11px;border-radius:7px}
+  .dl-list a:hover{background:#eef2ff}
+</style>
+</head>
+<body>
+
+<!-- ═════════ 1. 로그인 ═════════ -->
+<div class="screen active" id="scr-login">
+  <div class="card">
+    <h1>AI 면접 시스템</h1>
+    <p class="sub">면접에 참여하시려면 지원자 정보를 입력해 주세요.</p>
+    <label>지원자 번호 (참가자 ID)</label>
+    <input type="text" id="pid" placeholder="예: P01" autocomplete="off">
+    <label>성명</label>
+    <input type="text" id="pname" placeholder="예: 홍길동" autocomplete="off">
+    <div class="divider"></div>
+    <p class="note" style="margin:0 0 4px">※ 아래는 실험자 설정 항목입니다.</p>
+    <label>AI 면접관 수</label>
+    <div class="opt-group" id="grpCount">
+      <button data-v="3" class="sel">Multi agent (3명)</button>
+      <button data-v="1">Single agent (1명)</button>
+    </div>
+    <label>AI 면접관 형태</label>
+    <div class="opt-group" id="grpForm">
+      <button data-v="human" class="sel">사람 형태</button>
+      <button data-v="avatar">아바타</button>
+      <button data-v="x">형태 없음</button>
+    </div>
+    <div class="btn-row"><button class="btn" id="btnLogin">로그인</button></div>
+  </div>
+</div>
+
+<!-- ═════════ 2. 실험 안내 ═════════ -->
+<div class="screen" id="scr-intro">
+  <div class="card wide">
+    <div class="brandbar">
+      <img src="assets/screens/aivora-logo.webp" alt="Aivora"
+           onerror="this.style.display='none'">
+      <span class="brand-tag">AI Interview System</span>
+    </div>
+
+    <h1>안녕하세요, 반갑습니다!</h1>
+    <p class="sub" style="margin-bottom:18px">
+      여러분은 지금부터 <b>Aivora</b>에서 직접 제작한 AI 면접 시스템을 체험하시게 됩니다.
+    </p>
+
+    <div class="notice-grid">
+      <div class="nblock span2">
+        <h3>면접 진행 방식</h3>
+        <p>이 시스템은 실제 채용 과정에서 활용될 수 있도록 저희 Aivora가 직접 설계한 면접 프로그램입니다.</p>
+        <p id="ntProcess"></p>
+      </div>
+
+      <div class="nblock">
+        <h3>이번 체험에서는</h3>
+        <p>실제 면접과 유사한 환경 속에서 지원자의 입장이 되어 질문에 응답하게 됩니다.
+           문항은 조직 내 소통 및 업무 상 의사결정 방식을 평가하기 위한 질문으로 구성되어 있습니다.</p>
+      </div>
+
+      <div class="nblock">
+        <h3>문항 청취</h3>
+        <p><b>모든 문항은 최대 두 번까지 들을 수 있습니다.</b></p>
+        <p>첫 번째 재생이 끝난 후 5초 이내에 <b>[다시 듣기]</b>를 누르면 한 번 더 들을 수 있습니다.
+           누르지 않으면 5초 후에, 누르면 두 번째 재생이 끝난 후에 답변 녹음이 자동으로 시작됩니다.</p>
+      </div>
+
+      <div class="nblock">
+        <h3>답변 시간</h3>
+        <p>답변 시간은 화면 상단에 표시되며, 각 문항 별로
+           <b>최소 30초 이상 말씀해주셔야 다음 화면으로 넘어갈 수 있습니다.</b></p>
+        <p>답변 제한시간은 자기소개 60초, 나머지 문항 90초입니다.</p>
+      </div>
+
+      <div class="nblock">
+        <h3>평가 기준</h3>
+        <p>모든 문항은 <b>답변 내용의 양과 적절성 그리고 순발력</b>을 바탕으로 평가합니다.
+           <b>답변이 구체적일수록 AI 면접관이 답변 내용을 더욱 정확하게 분석할 수 있습니다.</b></p>
+        <p>가능한 한 구체적인 사례와 세부적인 설명을 포함하여 성실하게 답변해주세요.</p>
+      </div>
+
+      <div class="nblock span2">
+        <h3>유의사항</h3>
+        <p>모든 답변이 끝나면 <b>AI 면접관이 제공하는 평가 결과</b>가 제시됩니다.
+           이 평가는 실제 채용과는 무관한 모의결과로, 시스템 체험의 일환으로 제공됩니다.</p>
+        <p>보다 정확한 평가를 위해 면접 중에는 검색이나 외부 도움없이 본인의 생각을 솔직하게 답변해주시기 바랍니다.
+           체험이 끝난 뒤에는 간단한 설문을 작성해주시면 됩니다.
+           오늘 수집된 데이터는 반드시 연구 목적으로만 사용됩니다.</p>
+      </div>
+    </div>
+
+    <div class="btn-row"><button class="btn" id="btnToSetup">환경 설정으로 이동</button></div>
+  </div>
+</div>
+
+<!-- ═════════ 3. 환경 세팅 ═════════ -->
+<div class="screen" id="scr-setup">
+  <div class="card wide">
+    <h1>환경 설정</h1>
+    <p class="sub">카메라와 마이크를 확인합니다. 브라우저에서 권한 요청이 뜨면 <b>허용</b>을 눌러 주세요.</p>
+    <div class="divider"></div>
+    <div class="setup-grid">
+      <div class="setup-col">
+        <h2 style="margin-top:0">카메라</h2>
+        <video id="camPreview" autoplay muted playsinline></video>
+        <div class="chk" id="camChk">확인 전</div>
+      </div>
+      <div class="setup-col">
+        <h2 style="margin-top:0">마이크</h2>
+        <p class="sub" style="font-size:13px">마이크에 대고 “안녕하세요”라고 말해 보세요.
+          아래 막대가 움직이면 정상입니다.</p>
+        <div class="meter"><div id="micBar"></div></div>
+        <div class="chk" id="micChk">확인 전</div>
+        <div style="margin-top:18px">
+          <button class="btn ghost" id="btnDevices">카메라 · 마이크 켜기</button>
+        </div>
+        <p class="note">권한이 차단된 경우 주소창의 자물쇠 아이콘에서 허용으로 변경 후
+          새로고침해 주세요. 카메라·마이크는 <b>http://localhost</b> 접속 시에만 동작합니다.</p>
+      </div>
+    </div>
+    <div class="btn-row"><button class="btn" id="btnToInterview" disabled>면접 시작</button></div>
+  </div>
+</div>
+
+<!-- ═════════ 4. 면접 ═════════ -->
+<div class="screen" id="scr-interview">
+  <div class="stage">
+    <div class="stage-inner" id="stageInner">
+      <div class="topbar">
+        <span class="phase" id="phase">준비</span>
+        <span class="tval" id="tval">--:--</span>
+        <span class="qidx" id="qidx"></span>
+      </div>
+
+      <div class="body-pad">
+        <div class="panel-block" id="panelBlock">
+          <div class="mainstage" id="mainStage"></div>
+          <div class="subrail" id="subRail"></div>
+        </div>
+        <div class="voice-panel" id="voicePanel"></div>
+
+        <div class="section-div"></div>
+
+        <div class="lower-row">
+          <div class="qbox">
+            <div class="q" id="qtext">잠시 후 면접이 시작됩니다.</div>
+          </div>
+          <div class="selfcam" id="selfcam">
+            <div class="no-cam" id="noCam">카메라 꺼짐</div>
+            <video id="pipVideo" autoplay muted playsinline style="display:none"></video>
+            <div class="recdot"><i></i>녹음 중</div>
+            <div class="nameplate"><div class="nm" id="selfName">지원자</div></div>
+          </div>
+        </div>
+
+        <div class="controlbar">
+          <div class="ctrl-btns">
+            <button class="btn ghost" id="btnReplay" style="display:none">문항 다시 듣기</button>
+            <button class="btn ghost" id="btnDone" style="display:none">답변 완료</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 면접 시작 카운트다운 (1회) -->
+    <div class="save-overlay" id="prepOverlay">
+      <div class="count" id="prepCount">5</div>
+      <p>잠시 후 면접이 시작됩니다</p>
+    </div>
+    <!-- 답변 저장 (2초) -->
+    <div class="save-overlay" id="saveOverlay">
+      <div class="ring"></div>
+      <p>답변을 저장하고 있습니다..</p>
+    </div>
+    <!-- 평가 중 (15초) -->
+    <div class="save-overlay" id="evalOverlay">
+      <video id="evalVideo" class="eval-video" muted playsinline style="display:none"></video>
+      <div id="evalFallback" style="display:flex;flex-direction:column;align-items:center;gap:24px">
+        <div class="ring"></div>
+        <p>AI 면접관이 지원자님의 답변을 평가하고 있습니다</p>
+        <div class="prog" style="width:340px"><div id="evalBar"></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ 5. 결과 ═════════ -->
+<div class="screen" id="scr-result">
+  <div class="stage">
+    <div class="topbar">
+      <span class="phase">전형 결과</span>
+      <span class="qidx" id="resultPid"></span>
+    </div>
+    <div class="body-pad">
+      <div class="result-card">
+        <div class="result-head">
+          <h2>1차 AI 면접 평가에서<br><span class="fail">아쉽게 불합격 판정</span>을 받으셨습니다.</h2>
+        </div>
+        <div class="result-body">
+          <p>안녕하세요. 아쉽게도 귀하는 1차 AI 면접 평가에서 불합격하셨습니다.
+             <span id="rsIntro"></span></p>
+          <p>평가 과정에서는 답변의 구체성, 논리성, 일관성, 질문과의 관련성을 함께 고려했습니다.</p>
+          <p>이번 면접에서는 전체 지원자 중 평가 결과 <b>상위 20%를 합격 기준</b>으로 설정하였습니다.
+             <span id="rsResult"></span></p>
+          <div class="result-sign">
+            <div class="who">감사합니다.<br><b id="rsSign">AIvora AI 면접관 드림</b></div>
+            <img src="assets/screens/aivora-logo.webp" alt="Aivora"
+                 onerror="this.style.display='none'">
+          </div>
+        </div>
+      </div>
+      <div class="controlbar" style="justify-content:center">
+        <button class="btn" id="btnToSurvey">다음으로</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ 7. 설문 안내 ═════════ -->
+<div class="screen" id="scr-survey">
+  <div class="card" style="text-align:center">
+    <h1>설문조사 안내</h1>
+    <p class="sub" style="margin-top:8px">
+      면접이 모두 종료되었습니다.<br>
+      이어서 <b>설문조사</b>를 진행해 주세요. 실험자의 안내에 따라 아래 버튼을 눌러 주세요.
+    </p>
+    <div class="btn-row"><button class="btn" id="btnSurveyLink">설문조사 시작하기</button></div>
+    <div class="divider"></div>
+    <p class="note" style="text-align:left"><b>실험자용</b> · 아래에서 로그와 답변 녹음 파일을 저장하세요.</p>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn ghost" id="btnCsv">로그 CSV 저장</button>
+      <button class="btn ghost" id="btnAllAudio">답변 녹음 전체 저장</button>
+    </div>
+    <div class="dl-list" id="dlList"></div>
+  </div>
+</div>
+
+<script>
+/* ══════════════ CONFIG ══════════════ */
+const SURVEY_URL = "";
+
+/* 면접관 배정
+   면접관 1 = 중년 남자  → 자기소개, 1-1, 1-2
+   면접관 2 = 일반 여자  → 2-1, 2-2
+   면접관 3 = 일반 남자  → 3-1, 3-2
+   vid  : assets/video/<form>/ 안의 파일명
+   audM : assets/audio/Multi agent/ 안의 파일명 (형태 없음 조건)
+   audS : assets/audio/Single agent/ 안의 파일명                       */
+const QUESTIONS = [
+  { key:"intro", label:"자기소개", agent:1, sec:60,
+    text:"자기소개 해주세요." },
+
+  { key:"1-1", label:"문항 1-1", agent:1, sec:90,
+    text:"본인이 중요하게 생각했던 목표를 이루지 못한 경험을 말씀해주세요. 당시 어떤 목표를 세웠으며, 목표를 이루기 위해 어떤 노력을 했나요? 목표를 이루지 못한 원인과 그 경험이 본인에게 미친 영향을 구체적으로 설명해주세요." },
+
+  { key:"1-2", label:"문항 1-2", agent:1, sec:90,
+    text:"이전에 목표를 이루지 못했던 것과 유사한 문제가 다시 발생했다고 가정해보겠습니다. 과거의 경험을 바탕으로 이번에는 어떤 판단을 내리고, 어떻게 다르게 행동하시겠습니까? 새로운 방법으로도 문제가 해결되지 않는다면 어떻게 대응하시겠습니까?" },
+
+  { key:"2-1", label:"문항 2-1", agent:2, sec:90,
+    text:"함께 프로젝트를 수행한 사람들은 본인을 어떤 팀원이라고 설명할 것 같나요? 본인을 잘 나타내는 특성 두 가지를 말씀해주세요. 그러한 특성이 실제 행동으로 나타났던 구체적인 사례와 그 행동이 팀에 어떤 영향을 미쳤는지 설명해주세요." },
+
+  { key:"2-2", label:"문항 2-2", agent:2, sec:90,
+    text:"프로젝트가 끝난 후 한 팀원이 결과는 좋았지만, 진행 과정에서 다른 팀원들의 의견이 충분히 반영되지 않은 것 같다고 이야기했습니다. 이러한 피드백을 받는다면 해당 팀원에게 어떻게 이야기하시겠습니까? 다음 프로젝트에서는 협업 방식을 어떻게 조정할지 구체적으로 설명해주세요." },
+
+  { key:"3-1", label:"문항 3-1", agent:3, sec:90,
+    text:"상사가 실적 보고서에서 목표에 미달한 결과를 제외하고 성과가 좋은 결과만 상급 부서에 보고하라고 지시했습니다. 먼저 이 지시가 적절한지 어떻게 확인하고 판단하시겠습니까? 어떤 결정을 내릴 것이며, 그 이유를 상사에게 어떻게 설명할 것인지 말씀해주세요." },
+
+  { key:"3-2", label:"문항 3-2", agent:3, sec:90,
+    text:"상사는 회사에서 관행적으로 해오던 일이며, 이번 성과 달성을 위해 반드시 필요하다고 말하면서 계속해서 업무 수행을 요구합니다. 또한 지시를 따르지 않으면 업무평가에 불이익을 받을 수 있다고 이야기합니다. 이 상황에서 상사에게 구체적으로 어떤 말을 하고 행동하시겠습니까? 상사가 계속해서 같은 지시를 요구한다면 이후 어떻게 대응할지도 설명해주세요." }
+];
+const REPLAY_WINDOW = 5;    // 문항 낭독 후 다시 듣기 선택 시간 (지나면 자동 녹음)
+const MIN_ANSWER    = 30;   // [답변 완료] 안내 기준 시간
+const ENFORCE_MIN   = false; // true 로 바꾸면 30초 전까지 버튼이 실제로 잠깁니다 (본실험용)
+const START_COUNT   = 5;    // 면접 시작 전 카운트다운 (1회)
+const SAVE_SECONDS  = 2;    // 답변 저장 화면
+const EVAL_SECONDS  = 15;   // 평가 중 화면
+const MAX_PLAYS     = 2;    // 문항 최대 재생 횟수
+
+/* 화면 자산 */
+const sufx = () => nAgents===1 ? "single" : "multi";
+const EVAL_VIDEO = () => `assets/eval/eval_${form}_${sufx()}.mp4`;
+
+/* 조건별 안내·결과 문구 (Aivora 안내문 기준) */
+const COPY = {
+  single:{
+    process:`오늘 면접은 <b>한 명의 AI 면접관</b>이 <span class="hl">질문 제시부터 답변 평가까지</span>
+      회사가 정한 기준에 따라 진행합니다. 즉, 여러분의 답변은
+      <span class="hl">AI 면접관이 직접 분석하고 평가</span>하게 됩니다.`,
+    rsIntro:`이번 평가에서는 <b>한 명의 AI 면접관</b>이 귀하의 답변을 조직 내 소통 역량과
+      업무상 의사결정 역량을 중심으로 분석하여 종합적으로 판단했습니다.`,
+    rsResult:`AI 면접관이 귀하의 답변을 평가한 결과, 귀하는 해당 기준을 충족하지 못해
+      아쉽게도 <b>불합격</b>하셨습니다.`,
+    sign:`AIvora AI 면접관 드림`
+  },
+  multi:{
+    process:`오늘 면접은 <b>세 명의 AI 면접관</b>이 <span class="hl">질문 제시부터 답변 평가까지</span>
+      회사가 정한 기준에 따라 진행합니다. 세 명의 AI 면접관은 질문을 나누어 제시하지만,
+      여러분의 모든 답변을 <span class="hl">각각 동일한 기준에 따라 분석하고 평가</span>합니다.
+      이후 세 명의 AI 면접관의 <span class="hl">분석 결과를 종합하여 최종 평가를 산출합니다</span>.`,
+    rsIntro:`이번 평가에서는 <b>세 명의 AI 면접관</b>이 귀하의 답변을 조직 내 소통 역량과
+      업무상 의사결정 역량을 중심으로 각각 분석하고, 그 결과를 종합하여 판단했습니다.`,
+    rsResult:`세 명의 AI 면접관이 귀하의 답변을 각각 평가하여 종합한 결과, 귀하는 해당 범위에
+      포함되지 않아 아쉽게도 <b>불합격</b>하셨습니다.`,
+    sign:`AIvora AI 면접관 일동`
+  }
+};
+const AGENT_PITCH   = [0.8, 1.05, 1.25];
+
+/* 화면 좌석 순서 = 원본 패널 사진 순서 (좌 · 중앙 · 우)
+   좌   = 일반 남자 → 면접관 3
+   중앙 = 중년 남자 → 면접관 1
+   우   = 일반 여자 → 면접관 2                                  */
+const SEATS = [ {no:3}, {no:1}, {no:2} ];
+const seatOf = agentNo => { const i = SEATS.findIndex(s=>s.no===agentNo); return i<0?0:i; };
+const agentName = agentNo => `면접관 ${agentNo}`;
+
+const IMG_SEAT   = i => `assets/${form}_multi_${i+1}.png`;
+const IMG_SINGLE = () => `assets/${form}_single.png`;
+
+/* ── 영상 파일 설정 ────────────────────────────────────────────
+   실제 폴더 구조
+     assets/video/human/Multi/    assets/video/human/single/
+     assets/video/avatar/Multi/   assets/video/avatar/single/
+   새 영상을 넣거나 이름을 바꿀 때는 이 표만 고치면 됩니다.        */
+const singleSet = (dir, pre, wait) => ({
+  dir,
+  talk:{ "intro":`${pre}0-0.mp4`, "1-1":`${pre}1-1.mp4`, "1-2":`${pre}1-2.mp4`,
+         "2-1":`${pre}2-1.mp4`,  "2-2":`${pre}2-2.mp4`,
+         "3-1":`${pre}3-1.mp4`,  "3-2":`${pre}3-2.mp4` },
+  idle:()=>wait, still:()=>"still_single.jpg"
+});
+const MEDIA = {
+  human:{
+    multi:{ dir:"assets/video/human/Multi",
+      talk:{ "intro":"multi0-0.mp4", "1-1":"multi1-1.mp4", "1-2":"multi1-2.mp4",
+             "2-1":"multi2-1.mp4",  "2-2":"multi2-2.mp4",
+             "3-1":"Multi3-1.mp4",  "3-2":"Multi3-2.mp4" },
+      idle: no=>`M${no}-waiting.mp4`,
+      still: no=>`still_a${no}.jpg` },
+    single: singleSet("assets/video/human/single","human-single-","human-single-waiting.mp4")
+  },
+  avatar:{
+    multi:{ dir:"assets/video/avatar/Multi",
+      talk:{ "intro":"avatar-m0-0.mp4", "1-1":"avatar-m1-1.mp4", "1-2":"avatar-m1-2.mp4",
+             "2-1":"avatar-m2-1.mp4",  "2-2":"avatar-m2-2.mp4",
+             "3-1":"avatar-m3-1.mp4",  "3-2":"avatar-m3-2.mp4" },
+      idle: no=>`avatar-m-${no}-waiting.mp4`,
+      still: no=>`still_a${no}.jpg` },
+    single: singleSet("assets/video/avatar/single","single","single-waiting.mp4")
+  }
+};
+const mediaCfg = () => MEDIA[form] ? MEDIA[form][nAgents===3?"multi":"single"] : null;
+const TALK_VIDEO = q => { const c=mediaCfg(); return c ? `${c.dir}/${c.talk[q.key]}` : ""; };
+const IDLE_VIDEO = i => { const c=mediaCfg(); if(!c) return "";
+  return `${c.dir}/${ nAgents===3 ? c.idle(SEATS[i].no) : c.idle() }`; };
+const STILL_IMG  = i => { const c=mediaCfg(); if(!c) return "";
+  return `${c.dir}/${ nAgents===3 ? c.still(SEATS[i].no) : c.still() }`; };
+/* 형태 없음(Agent X) 조건 음성
+   assets/audio/Multi agent/M0_0.mp3, M1-1.mp3 … M3-2.mp3
+   assets/audio/Single agent/S0_0.mp3, S1-1.mp3 … S3-2.mp3      */
+const audKey = k => k==="intro" ? "0_0" : k;
+const AUDIO_FILE = q => encodeURI(nAgents===3
+  ? `assets/audio/Multi agent/M${audKey(q.key)}.mp3`
+  : `assets/audio/Single agent/S${audKey(q.key)}.mp3`);
+
+/* ══════════════ STATE ══════════════ */
+const $ = id => document.getElementById(id);
+let pid="", pname="", nAgents=3, form="human";
+let idx=-1, plays=0, timerId=null, remain=0;
+let camStream=null, micStream=null, audioCtx=null, analyser=null, meterRAF=null;
+let recorder=null, chunks=[], recordings=[], curAudio=null;
+const log=[];
+const condName = () => `${nAgents===1?"single":"multi"}_${form}`;
+const addLog=(event,extra="")=>log.push({
+  t:new Date().toISOString(), pid, pname, cond:condName(),
+  q: (idx>=0 && QUESTIONS[idx]) ? QUESTIONS[idx].key : "-", event, extra });
+
+function show(id){document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));$(id).classList.add("active");}
+const fmt = s => String(Math.floor(Math.max(s,0)/60)).padStart(2,"0")+":"+String(Math.max(s,0)%60).padStart(2,"0");
+
+/* ══════════════ 로그인 ══════════════ */
+document.querySelectorAll("#grpCount button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#grpCount button").forEach(x=>x.classList.remove("sel"));
+  b.classList.add("sel"); nAgents=+b.dataset.v;
+});
+document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#grpForm button").forEach(x=>x.classList.remove("sel"));
+  b.classList.add("sel"); form=b.dataset.v;
+});
+$("btnLogin").onclick=()=>{
+  pid=$("pid").value.trim()||"P00";
+  pname=$("pname").value.trim()||"지원자";
+  addLog("login",`agents=${nAgents};form=${form}`);
+  $("ntProcess").innerHTML = COPY[sufx()].process;
+  show("scr-intro");
+};
+$("btnToSetup").onclick=()=>{ addLog("intro_done"); show("scr-setup"); };
+
+/* ══════════════ 환경 세팅 ══════════════ */
+$("btnDevices").onclick=async()=>{
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:true});
+    $("camPreview").srcObject=camStream;
+    $("camChk").textContent="카메라 정상"; $("camChk").className="chk ok";
+  }catch(e){
+    $("camChk").textContent="카메라 사용 불가: "+e.name; $("camChk").className="chk bad";
+  }
+  try{
+    micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+    const src=audioCtx.createMediaStreamSource(micStream);
+    analyser=audioCtx.createAnalyser(); analyser.fftSize=512;
+    src.connect(analyser);
+    const buf=new Uint8Array(analyser.frequencyBinCount);
+    let peaked=false;
+    const loop=()=>{
+      analyser.getByteTimeDomainData(buf);
+      let sum=0; for(let i=0;i<buf.length;i++){const v=(buf[i]-128)/128; sum+=v*v;}
+      const pct=Math.min(100, Math.sqrt(sum/buf.length)*320);
+      $("micBar").style.width=pct+"%";
+      if(pct>18&&!peaked){
+        peaked=true;
+        $("micChk").textContent="마이크 정상 (입력 감지됨)"; $("micChk").className="chk ok";
+      }
+      meterRAF=requestAnimationFrame(loop);
+    };
+    loop();
+    $("micChk").textContent="마이크 연결됨 — 소리를 내어 확인해 주세요";
+    $("micChk").className="chk ok";
+    $("btnDevices").textContent="장치 다시 확인";
+  }catch(e){
+    $("micChk").textContent="마이크 사용 불가: "+e.name; $("micChk").className="chk bad";
+  }
+  /* 권한이 확인되면 바로 시작 가능 (음성 크기 감지를 기다리지 않음) */
+  $("btnToInterview").disabled=false;
+};
+$("btnToInterview").onclick=()=>{
+  cancelAnimationFrame(meterRAF);
+  addLog("setup_done",`cam=${!!camStream};mic=${!!micStream}`);
+  show("scr-interview");
+  buildRoom();
+  $("selfName").textContent = pname || "지원자";
+  if(camStream){ $("pipVideo").srcObject=camStream; $("pipVideo").style.display="block"; $("noCam").style.display="none"; }
+  startCountdown();
+};
+
+/* 면접 시작 전 카운트다운 (문항 시작 전 1회)
+   배경은 첫 문항 담당 면접관이 이미 메인에 있는 배치로 맞춘다.
+   (카운트다운 후 배치가 갑자기 바뀌는 것을 방지) */
+function startCountdown(){
+  if(form!=="x" && nAgents===3) focusAgent(seatOf(QUESTIONS[0].agent));
+  setPhase("면접 준비");
+  $("qtext").textContent="잠시 후 면접이 시작됩니다.";
+  $("qidx").textContent=`0 / ${QUESTIONS.length}`;
+  $("tval").textContent="--:--";
+  let left=START_COUNT;
+  $("prepCount").textContent=left;
+  $("stageInner").classList.add("blurred");
+  $("prepOverlay").classList.add("on");
+  addLog("start_countdown",`sec=${START_COUNT}`);
+  const iv=setInterval(()=>{
+    left--;
+    if(left>0){ $("prepCount").textContent=left; return; }
+    clearInterval(iv);
+    $("stageInner").classList.remove("blurred");
+    $("prepOverlay").classList.remove("on");
+    nextQuestion();
+  },1000);
+}
+
+/* ══════════════ 면접관 타일 ══════════════ */
+const micSvg='<svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+let tiles=[];
+
+function buildRoom(){
+  const n = nAgents===3 ? 3 : 1;
+  tiles=[]; curFocus=-1;
+
+  /* 형태 없음 조건 : 카메라 창을 쓰지 않는다.
+     영상 조건과 같은 창 배치를 쓰면 "곧 얼굴이 나올 것"이라는
+     기대가 생겨 의도치 않은 자극이 되므로, 원형 + 파동만 표시. */
+  if(form==="x"){
+    $("panelBlock").style.display="none";
+    $("voicePanel").classList.add("on");
+    const vp=$("voicePanel"); vp.innerHTML="";
+    for(let i=0;i<n;i++){
+      const label = n===3 ? `면접관 ${i+1}` : "면접관";
+      const el=document.createElement("div");
+      el.className="vc"; el.dataset.a=i;
+      el.innerHTML=`<div class="dot">${micSvg}</div>
+        <div class="vlabel">${label}</div>
+        <div class="vwave"><span></span><span></span><span></span><span></span><span></span></div>`;
+      vp.appendChild(el);
+      tiles.push(el);
+    }
+    return;
+  }
+
+  $("panelBlock").style.display="flex";
+  $("voicePanel").classList.remove("on");
+  for(let i=0;i<n;i++){
+    const label = nAgents===3 ? agentName(SEATS[i].no) : "면접관";
+    const still = STILL_IMG(i);
+    const fallback = nAgents===3 ? IMG_SEAT(i) : IMG_SINGLE();
+    const el=document.createElement("div");
+    el.className="tile"; el.dataset.a=i;
+    el.innerHTML =
+      `<img src="${still}" alt="" onerror="this.onerror=null;this.src='${fallback}'">
+       <video class="v-idle" muted loop playsinline></video>
+       <video class="v-talk" playsinline></video>
+       <div class="badge"><i></i>발화 중</div>
+       <div class="nameplate"><div class="nm">${label}</div></div>
+       <div class="speak-ind"><span></span><span></span><span></span><span></span></div>`;
+    tiles.push(el);
+  }
+  $("subRail").style.display = n>1 ? "flex" : "none";
+  focusAgent(0);
+  playIdles();
+}
+
+/* 대기 영상 재생 · 재개
+   DOM에서 분리된 <video>는 브라우저가 자동 일시정지하므로
+   타일을 옮길 때마다 다시 호출해야 멈춤(정지 사진) 현상이 없다. */
+function playIdles(){
+  if(form==="x") return;
+  tiles.forEach((el,i)=>{
+    const idle=el.querySelector(".v-idle");
+    if(!idle) return;
+    if(!idle.getAttribute("src")){
+      idle.onerror=()=>idle.classList.remove("show");
+      idle.setAttribute("src", IDLE_VIDEO(i));
+    }
+    idle.muted=true; idle.loop=true;
+    const p=idle.play();
+    if(p&&p.then) p.then(()=>idle.classList.add("show")).catch(()=>{});
+  });
+}
+
+/* 발화자는 메인 스테이지, 나머지는 서브 슬롯 (원래 순서 유지) */
+let curFocus=-1;
+function focusAgent(a){
+  if(form==="x") return;          // 형태 없음 조건은 원형 배치 고정
+  if(a===curFocus) return;        // 같은 면접관이면 옮기지 않음 (재생 끊김 방지)
+  curFocus=a;
+  const stage=$("mainStage"), rail=$("subRail");
+  stage.innerHTML=""; rail.innerHTML="";
+  tiles.forEach((el,i)=>{
+    if(i===a) stage.appendChild(el);
+    else{
+      const slot=document.createElement("div");
+      slot.className="slot"; slot.appendChild(el); rail.appendChild(slot);
+    }
+  });
+  playIdles();                    // 재부착된 영상 재개
+}
+function setSpeaking(a,on){
+  tiles.forEach((el,i)=>el.classList.toggle("speaking", on && i===a));
+  $("mainStage").classList.toggle("speaking", on && form!=="x");   // 초록 굵은 테두리
+}
+
+/* ══════════════ 발화: 영상 → 오디오 → TTS ══════════════ */
+let koVoice=null;
+function pickVoice(){
+  const vs=speechSynthesis.getVoices();
+  koVoice=vs.find(v=>v.lang.startsWith("ko")&&/Yuna|Suhyun|premium|enhanced/i.test(v.name))
+        ||vs.find(v=>v.lang.startsWith("ko"))||null;
+}
+speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
+const talkEl = a => tiles[a] ? tiles[a].querySelector(".v-talk") : null;
+
+function stopAllSpeech(){
+  speechSynthesis.cancel();
+  if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); curAudio=null; }
+  tiles.forEach(el=>{
+    const v=el.querySelector(".v-talk");
+    if(v){ v.onended=null; v.onerror=null; v.pause(); v.classList.remove("show"); }
+  });
+}
+
+/* 화면상의 위치 index
+   영상 조건 : 원본 패널 사진의 좌석 순서
+   형태 없음 : 면접관 1·2·3 순서 그대로                        */
+const agentIdx = q => nAgents===1 ? 0 : (form==="x" ? q.agent-1 : seatOf(q.agent));
+
+function speakQuestion(q,onEnd){
+  const a = agentIdx(q);
+  focusAgent(a);
+  setSpeaking(a,true);
+  let finished=false;
+  const finish=()=>{
+    if(finished) return; finished=true;
+    const t=talkEl(a); if(t){ t.classList.remove("show"); t.onended=null; }
+    setSpeaking(a,false);
+    onEnd&&onEnd();
+  };
+  const viaAudio=()=>{
+    const t=talkEl(a); if(t) t.classList.remove("show");
+    const audio=new Audio(AUDIO_FILE(q));
+    curAudio=audio;
+    audio.onended=finish;
+    audio.onerror=()=>{
+      const u=new SpeechSynthesisUtterance(q.text);
+      u.lang="ko-KR"; u.rate=0.95;
+      u.pitch = nAgents===3 ? AGENT_PITCH[a] : 1.0;
+      if(koVoice) u.voice=koVoice;
+      u.onend=finish; u.onerror=finish;
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    };
+    audio.play().catch(()=>audio.onerror());
+  };
+  const t=talkEl(a);
+  if(form!=="x" && t){
+    t.onended=finish; t.onerror=viaAudio;
+    t.onplaying=()=>t.classList.add("show");   // 버퍼링 중 검은 화면 방지
+    t.muted=false; t.preload="auto";
+    t.src=TALK_VIDEO(q); t.load(); t.currentTime=0;
+    t.play().catch(viaAudio);
+    return;
+  }
+  viaAudio();
+}
+
+/* ══════════════ 녹음 ══════════════ */
+function startRecording(){
+  if(!micStream) return;
+  try{
+    chunks=[];
+    recorder=new MediaRecorder(micStream);
+    recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
+    recorder.start();
+    $("selfcam").classList.add("recording");
+  }catch(e){ console.warn("recorder",e); }
+}
+function stopRecording(save){
+  $("selfcam").classList.remove("recording");
+  if(!recorder||recorder.state==="inactive") return;
+  const q=QUESTIONS[idx];
+  recorder.onstop=()=>{
+    if(save&&q&&chunks.length){
+      const blob=new Blob(chunks,{type:recorder.mimeType||"audio/webm"});
+      recordings.push({ key:q.key, label:q.label, url:URL.createObjectURL(blob),
+                        name:`${pid}_${condName()}_${q.key}.webm` });
+    }
+  };
+  recorder.stop();
+}
+
+/* ══════════════ 타이머 ══════════════ */
+function runTimer(sec,onTick,onDone){
+  clearInterval(timerId); remain=sec;
+  $("tval").textContent=fmt(remain); $("tval").classList.remove("warn");
+  timerId=setInterval(()=>{
+    remain--;
+    $("tval").textContent=fmt(remain);
+    if(remain<=10) $("tval").classList.add("warn");
+    onTick&&onTick(remain);
+    if(remain<=0){ clearInterval(timerId); onDone&&onDone(); }
+  },1000);
+}
+
+/* ══════════════ 진행 ══════════════ */
+function setPhase(text,cls){ $("phase").textContent=text; $("phase").className="phase"+(cls?" "+cls:""); }
+
+function nextQuestion(){
+  idx++;
+  if(idx>=QUESTIONS.length){ finishInterview(); return; }
+  plays=0;
+  const q=QUESTIONS[idx];
+  $("qtext").textContent=q.text;
+  $("qidx").textContent=`${idx+1} / ${QUESTIONS.length}`;
+  playQuestion();
+}
+
+function playQuestion(){
+  const q=QUESTIONS[idx];
+  plays++;
+  clearInterval(timerId);
+  stopAllSpeech();
+  setPhase("질문 중");
+  $("tval").textContent="--:--"; $("tval").classList.remove("warn");
+  $("btnReplay").style.display="none"; $("btnDone").style.display="none";
+  addLog("question_play",`play=${plays};agent=${q.agent}`);
+  speakQuestion(q, afterQuestion);
+}
+
+/* 낭독 종료 → 다시 듣기 선택 5초 (누르지 않으면 자동으로 녹음 시작).
+   두 번째 재생이 끝난 경우에는 곧바로 녹음 시작. */
+let replayTimer=null;
+function afterQuestion(){
+  if(plays>=MAX_PLAYS){ beginAnswer(); return; }
+  setPhase("답변 준비");
+  $("tval").textContent=fmt(REPLAY_WINDOW);
+  $("tval").classList.remove("warn");
+  $("btnDone").style.display="none";
+  $("btnReplay").style.display="inline-block";
+  addLog("replay_window_start",`sec=${REPLAY_WINDOW}`);
+  let left=REPLAY_WINDOW;
+  clearInterval(replayTimer);
+  replayTimer=setInterval(()=>{
+    left--;
+    $("tval").textContent=fmt(Math.max(left,0));
+    if(left>0) return;
+    clearInterval(replayTimer); replayTimer=null;
+    addLog("replay_window_end","auto");
+    beginAnswer();
+  },1000);
+}
+
+function beginAnswer(){
+  const q=QUESTIONS[idx];
+  clearInterval(replayTimer); replayTimer=null;
+  setPhase("답변 녹음 중","rec");
+  startRecording();
+  addLog("answer_start",`limit=${q.sec};after_play=${plays}`);
+  $("btnReplay").style.display="none";
+  $("btnDone").style.display="inline-block";
+  $("btnDone").disabled = ENFORCE_MIN;
+  $("btnDone").textContent = `답변 완료 (${MIN_ANSWER}초)`;
+  let minPassed=false;
+  runTimer(q.sec, rem=>{
+    const used=q.sec-rem;
+    if(used>=MIN_ANSWER){
+      if(!minPassed){
+        minPassed=true;
+        $("btnDone").disabled=false;
+        $("btnDone").textContent="답변 완료";
+        addLog("min_answer_passed");
+      }
+    }else{
+      $("btnDone").textContent=`답변 완료 (${MIN_ANSWER-used}초)`;
+    }
+  }, ()=>{ addLog("answer_timeup"); toSaving(); });
+}
+
+$("btnReplay").onclick=()=>{
+  clearInterval(replayTimer); replayTimer=null;
+  addLog("replay_clicked");
+  playQuestion();
+};
+$("btnDone").onclick=()=>{
+  if($("btnDone").disabled) return;
+  addLog("answer_done_clicked",`used=${QUESTIONS[idx].sec-remain}`);
+  toSaving();
+};
+
+let savingBusy=false;
+function toSaving(){
+  if(savingBusy) return;          // 시간만료 + 버튼 클릭 중복 방지
+  savingBusy=true;
+  clearInterval(timerId);
+  stopAllSpeech();
+  stopRecording(true);
+  setPhase("답변 저장 중","save");
+  $("tval").textContent="--:--"; $("tval").classList.remove("warn");
+  $("btnReplay").style.display="none"; $("btnDone").style.display="none";
+  $("stageInner").classList.add("blurred");
+  $("saveOverlay").classList.add("on");
+  addLog("saving_start");
+  setTimeout(()=>{
+    $("stageInner").classList.remove("blurred");
+    $("saveOverlay").classList.remove("on");
+    addLog("saving_end");
+    savingBusy=false;
+    nextQuestion();
+  }, SAVE_SECONDS*1000);
+}
+
+/* 평가 중 : 면접 화면을 유지한 채 오버레이 (자극물 디자인 그대로) */
+let finished=false;
+function finishInterview(){
+  if(finished) return;
+  finished=true;
+  clearInterval(timerId); clearInterval(replayTimer); stopAllSpeech();
+  addLog("interview_end");
+  setPhase("평가 중","save");
+  $("tval").textContent="--:--"; $("tval").classList.remove("warn");
+  $("qtext").textContent="모든 문항이 종료되었습니다.";
+  $("btnReplay").style.display="none"; $("btnDone").style.display="none";
+  $("saveOverlay").classList.remove("on");
+  $("prepOverlay").classList.remove("on");
+  $("stageInner").classList.add("blurred");
+  $("evalOverlay").classList.add("on");
+  $("evalBar").style.width="0%";
+
+  /* 조건별 평가 화면 영상 (없으면 스피너 폴백) */
+  const ev=$("evalVideo");
+  ev.onerror=()=>{ ev.style.display="none"; $("evalFallback").style.display="flex";
+                   $("evalOverlay").classList.remove("full"); };
+  ev.oncanplay=()=>{ ev.style.display="block"; $("evalFallback").style.display="none";
+                     $("evalOverlay").classList.add("full"); };
+  ev.muted=true; ev.src=EVAL_VIDEO(); ev.load();
+  ev.play().catch(()=>ev.onerror());
+
+  addLog("eval_start",`sec=${EVAL_SECONDS}`);
+  let e=0;
+  const iv=setInterval(()=>{
+    e++; $("evalBar").style.width=(e/EVAL_SECONDS*100)+"%";
+    if(e<EVAL_SECONDS) return;
+    clearInterval(iv);
+    ev.pause();
+    $("stageInner").classList.remove("blurred");
+    $("evalOverlay").classList.remove("on");
+    $("evalOverlay").classList.remove("full");
+    tiles.forEach(el=>{ const v=el.querySelector(".v-idle"); if(v) v.pause(); });
+    addLog("eval_end");
+    $("resultPid").textContent = pid;
+    const c=COPY[sufx()];
+    $("rsIntro").innerHTML=c.rsIntro;
+    $("rsResult").innerHTML=c.rsResult;
+    $("rsSign").textContent=c.sign;
+    show("scr-result");
+  },1000);
+}
+
+/* ══════════════ 결과 · 설문 ══════════════ */
+$("btnToSurvey").onclick=()=>{ addLog("result_viewed"); show("scr-survey"); renderDownloads(); };
+$("btnSurveyLink").onclick=()=>{
+  addLog("survey_opened");
+  if(SURVEY_URL){ window.open(SURVEY_URL,"_blank"); return; }
+  $("btnSurveyLink").disabled=true;
+  $("btnSurveyLink").textContent="실험자 안내를 기다려 주세요";
+};
+function renderDownloads(){
+  $("dlList").innerHTML = recordings.length
+    ? recordings.map(r=>`<a href="${r.url}" download="${r.name}">${r.label}</a>`).join("")
+    : `<span class="note">녹음된 답변이 없습니다 (마이크 미사용).</span>`;
+}
+$("btnAllAudio").onclick=()=>{
+  recordings.forEach((r,i)=>setTimeout(()=>{
+    const a=document.createElement("a"); a.href=r.url; a.download=r.name; a.click();
+  }, i*400));
+};
+$("btnCsv").onclick=()=>{
+  const head="timestamp,participant,name,condition,question,event,extra\n";
+  const rows=log.map(r=>[r.t,r.pid,r.pname,r.cond,r.q,r.event,r.extra].join(",")).join("\n");
+  const blob=new Blob(["﻿"+head+rows],{type:"text/csv"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`interview_log_${pid}_${condName()}.csv`;
+  a.click();
+};
+window.addEventListener("beforeunload",e=>{
+  if($("scr-interview").classList.contains("active")){ e.preventDefault(); e.returnValue=""; }
+});
+</script>
+</body>
+</html>
