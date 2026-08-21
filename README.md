@@ -16,10 +16,25 @@ AI_Interview_S2/
 ├── start.command      ← Mac 실행 (deploy/ 를 서빙)
 ├── start_windows.bat  ← Windows 실행
 ├── server.ps1         ← Windows 내장 서버
+├── backend/           ← 조건 자동 배정 + 녹음 수집 (Google Apps Script)
+│   ├── Code.gs            스크립트 본문
+│   └── README.md          설치 가이드
 ├── README.md
 ├── 실행방법.md
 └── _archive/          ← Git 제외 · 없어도 프로그램은 동작함
 ```
+
+## 조건 배정 · 녹음 수집
+
+참가자에게 **링크 하나만** 배포하면 접속 시 참가자 번호가 자동 생성되고
+인원이 가장 적은 조건에 배정됩니다. 조건은 URL에 노출되지 않습니다.
+답변 녹음은 문항이 끝날 때마다 구글 드라이브로 자동 업로드됩니다.
+
+- 배정 기록 · 로그 → [AI면접_배정기록](https://docs.google.com/spreadsheets/d/1mD3lP4jtQiDVYcUeQ6VJ_Br1i0qh9nthAOHOZ4UoZu0/edit)
+- 녹음 파일 → [AI면접_녹음](https://drive.google.com/drive/folders/1QWtun8uh4Ow9lJMFcAx536DSJHVwP7fr)
+
+`deploy/index.html` 의 `BACKEND_URL` 을 비우면 예전처럼 실험자 수동 선택 모드로 돌아갑니다.
+자세한 내용은 `backend/README.md`.
 
 | 구분 | 폴더 | 용량 | Git |
 |---|---|---|---|

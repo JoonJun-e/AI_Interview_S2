@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>실험 페이지로 이동 중</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 640px; margin: 15vh auto; padding: 24px; line-height: 1.6; text-align: center; }
+    .spinner { width: 36px; height: 36px; border: 4px solid #ddd; border-top-color: #333; border-radius: 50%; margin: 24px auto; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error { color: #b00020; display: none; }
+  </style>
+</head>
+<body>
+  <h2>실험 페이지로 이동 중입니다.</h2>
+  <div class="spinner"></div>
+  <p>창을 닫거나 새로고침하지 말아 주세요.</p>
+  <p id="error" class="error">배정 중 오류가 발생했습니다. 연구자에게 문의해 주세요.</p>
+
+  <script>
+    async function assign() {
+      try {
+        // 같은 브라우저에서 실수로 새로고침/재접속했을 때 새 조건을 받지 않도록 로컬 토큰을 유지합니다.
+        let browserToken = localStorage.getItem('experiment_browser_token');
+        if (!browserToken) {
+          browserToken = crypto.randomUUID();
+          localStorage.setItem('experiment_browser_token', browserToken);
+        }
+
+        const response = await fetch('/api/assign', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ browserToken })
+        });
+
+        if (!response.ok) throw new Error('Assignment failed');
+
+        const result = await response.json();
+        // API가 participant_id만 붙인 최종 URL을 돌려줍니다. condition은 DB에만 저장됩니다.
+        window.location.replace(result.redirectUrl);
+      } catch (e) {
+        console.error(e);
+        document.querySelector('.spinner').style.display = 'none';
+        document.getElementById('error').style.display = 'block';
+      }
+    }
+
+    assign();
+  </script>
+</body>
+</html>
