@@ -119,6 +119,8 @@
   .controlbar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;
     gap:10px;height:52px}
   .ctrl-btns{display:flex;gap:10px;justify-content:center}
+  .foot-note{flex:0 0 auto;text-align:center;font-size:12px;color:#b9bec9;
+    padding-bottom:4px;letter-spacing:.01em}
 
   /* 타일 공통 */
   .tile{position:absolute;inset:0;overflow:hidden;background:#20242e}
@@ -391,6 +393,7 @@
             <button class="btn ghost" id="btnDone" style="display:none">답변 완료</button>
           </div>
         </div>
+        <p class="foot-note">새로고침하거나 창을 닫으면 면접이 처음부터 다시 시작됩니다.</p>
       </div>
     </div>
     <!-- 면접 시작 카운트다운 (1회) -->
@@ -631,7 +634,10 @@ document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
     $("pidBox").style.display = backendOn() ? "block" : "none";
     if(backendOn()) $("pidShow").textContent="실험자 모드 (수동 선택)";
   }else{
-    $("manualBox").remove();          // DOM 에서 아예 제거
+    /* 참가자 모드 : 조건 선택도, 실험자용 저장 메뉴도 화면에서 제거한다.
+       녹음·로그는 드라이브와 시트로 자동 전송되므로 참가자가 할 일이 없다. */
+    $("manualBox").remove();
+    const et=document.querySelector(".exp-tools"); if(et) et.remove();
     $("pidBox").style.display="block";
     $("btnLogin").disabled=true;
     autoAssign();
@@ -1094,7 +1100,7 @@ function finishInterview(){
 }
 
 /* ══════════════ 종료 화면 ══════════════ */
-$("expToggle").onclick=e=>{ e.preventDefault(); $("expPanel").classList.toggle("on"); };
+if($("expToggle")) $("expToggle").onclick=e=>{ e.preventDefault(); $("expPanel").classList.toggle("on"); };
 $("btnSurveyLink").onclick=()=>{
   addLog("survey_opened");
   if(SURVEY_URL){ window.open(SURVEY_URL,"_blank"); return; }
@@ -1102,6 +1108,7 @@ $("btnSurveyLink").onclick=()=>{
   $("btnSurveyLink").textContent="실험자 안내를 기다려 주세요";
 };
 function renderDownloads(){
+  if(!$("dlList")) return;            // 참가자 모드에서는 패널 자체가 없음
   const info = backendOn()
     ? `<div class="note">참가자 ${pid} · 조건 ${condCode} · 업로드 성공 ${upStatus.ok} / 실패 ${upStatus.fail}</div>`
     : "";
@@ -1109,12 +1116,12 @@ function renderDownloads(){
     ? recordings.map(r=>`<a href="${r.url}" download="${r.name}">${r.label}</a>`).join("")
     : `<span class="note">녹음된 답변이 없습니다 (마이크 미사용).</span>`);
 }
-$("btnAllAudio").onclick=()=>{
+if($("btnAllAudio")) $("btnAllAudio").onclick=()=>{
   recordings.forEach((r,i)=>setTimeout(()=>{
     const a=document.createElement("a"); a.href=r.url; a.download=r.name; a.click();
   }, i*400));
 };
-$("btnCsv").onclick=()=>{
+if($("btnCsv")) $("btnCsv").onclick=()=>{
   const head="timestamp,participant,name,condition,question,event,extra\n";
   const rows=log.map(r=>[r.t,r.pid,r.pname,r.cond,r.q,r.event,r.extra].join(",")).join("\n");
   const blob=new Blob(["﻿"+head+rows],{type:"text/csv"});
