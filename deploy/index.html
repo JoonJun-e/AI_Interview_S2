@@ -465,7 +465,8 @@ const QUESTIONS = [
 ];
 const REPLAY_WINDOW = 5;    // 문항 낭독 후 다시 듣기 선택 시간 (지나면 자동 녹음)
 const MIN_ANSWER    = 30;   // 이 시간이 지나야 [답변 완료] 버튼이 활성화됨
-const ENFORCE_MIN   = true; // 데모·테스트 중 잠금을 풀려면 false 로 바꾸세요
+const ENFORCE_MIN   = false; // 데모·테스트 중 잠금을 풀려면 false 로 바꾸세요 (운영 시 true 로 되돌릴 것)
+const STICKY_ASSIGNMENT = false; // true면 같은 브라우저(localStorage)가 항상 같은 조건으로 재배정됨. 테스트 중엔 false로 매번 새로 배정 (운영 시 true 로 되돌릴 것)
 const START_COUNT   = 5;    // 면접 시작 전 카운트다운 (1회)
 const SAVE_SECONDS  = 2;    // 답변 저장 화면
 const MAX_PLAYS     = 2;    // 문항 최대 재생 횟수
@@ -587,7 +588,7 @@ const adminMode = new URLSearchParams(location.search).get("admin")==="1";
 /* 조건 자동 배정 : 접속 시 1회, 실패하면 재시도.
    같은 참가자가 새로고침하면 기존 조건을 그대로 받습니다. */
 async function autoAssign(attempt=1){
-  const saved   = localStorage.getItem("ai_interview_pid") || "";
+  const saved   = STICKY_ASSIGNMENT ? (localStorage.getItem("ai_interview_pid") || "") : "";
   const fromUrl = new URLSearchParams(location.search).get("participant_id") || "";
   $("pidShow").textContent = attempt===1 ? "배정 중…" : `연결 중… (${attempt}/3)`;
   try{
