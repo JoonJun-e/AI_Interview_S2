@@ -32,6 +32,7 @@ function doPost(e) {
     if (body.action === 'assign') return json(assign(body));
     if (body.action === 'upload') return json(upload(body));
     if (body.action === 'log')    return json(saveLog(body));
+    if (body.action === 'name')   return json(setName(body));
     return json({ ok:false, error:'unknown action' });
   } catch (err) {
     return json({ ok:false, error:String(err) });
@@ -50,13 +51,13 @@ function assign(body) {
   lock.waitLock(20000);
   try {
     const sh = sheet('assignments');
-    const rows = sh.getDataRange().getValues();          // [ts, pid, code, agents, form, ...]
+    const rows = sh.getDataRange().getValues();          // [ts, pid, name, code, agents, form, ...]
 
     // 재접속 : 기존 배정 유지
     if (body.participant_id) {
       for (let i = 1; i < rows.length; i++) {
         if (rows[i][1] === body.participant_id) {
-          const c = CONDITIONS.find(x => x.code === rows[i][2]);
+          const c = CONDITIONS.find(x => x.code === rows[i][3]);
           return { ok:true, participant_id:rows[i][1], condition:c.code,
                    agents:c.agents, form:c.form, resumed:true };
         }
@@ -67,7 +68,7 @@ function assign(body) {
     const count = {};
     CONDITIONS.forEach(c => count[c.code] = 0);
     for (let i = 1; i < rows.length; i++) {
-      if (count[rows[i][2]] !== undefined) count[rows[i][2]]++;
+      if (count[rows[i][3]] !== undefined) count[rows[i][3]]++;
     }
 
     // 가장 적은 조건들 중 무작위
@@ -76,12 +77,32 @@ function assign(body) {
     const picked = pool[Math.floor(Math.random() * pool.length)];
 
     const pid = body.participant_id || nextPid(rows);
-    sh.appendRow([new Date(), pid, picked.code, picked.agents, picked.form,
+    // 이름은 아직 모르므로 빈 칸으로 두고, 로그인 시 setName() 이 채웁니다.
+    sh.appendRow([new Date(), pid, '', picked.code, picked.agents, picked.form,
                   body.ua || '', min + 1]);
 
     return { ok:true, participant_id:pid, condition:picked.code,
              agents:picked.agents, form:picked.form, resumed:false,
              counts:count, target:TARGET_PER_CELL };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/* 로그인 시 이름을 확정 지으면, 배정 시트의 해당 참가자 행에 이름을 채웁니다. */
+function setName(body) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = sheet('assignments');
+    const rows = sh.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][1] === body.participant_id) {
+        sh.getRange(i + 1, 3).setValue(body.name || '');
+        return { ok:true };
+      }
+    }
+    return { ok:false, error:'participant not found' };
   } finally {
     lock.releaseLock();
   }
@@ -109,8 +130,8 @@ function upload(body) {
   const blob  = Utilities.newBlob(bytes, body.mime || 'audio/webm', body.filename);
   const file  = dir.createFile(blob);
 
-  sheet('uploads').appendRow([new Date(), pid, body.condition || '',
-                              body.question || '', body.filename,
+  sheet('uploads').appendRow([new Date(), pid, body.participant_name || '',
+                              body.condition || '', body.question || '', body.filename,
                               Math.round(file.getSize() / 1024) + 'KB']);
   return { ok:true, file_id:file.getId() };
 }
@@ -119,7 +140,7 @@ function upload(body) {
 function saveLog(body) {
   const sh = sheet('logs');
   (body.rows || []).forEach(r => {
-    sh.appendRow([r.t, r.pid, r.cond, r.q, r.event, r.extra]);
+    sh.appendRow([r.t, r.pid, r.name || '', r.cond, r.q, r.event, r.extra]);
   });
   return { ok:true, saved:(body.rows || []).length };
 }
@@ -131,9 +152,9 @@ function sheet(name) {
   if (!sh) {
     sh = ss.insertSheet(name);
     const head = {
-      assignments: ['시각','참가자','조건','면접관수','형태','브라우저','배정순번'],
-      uploads:     ['시각','참가자','조건','문항','파일명','크기'],
-      logs:        ['시각','참가자','조건','문항','이벤트','비고']
+      assignments: ['시각','참가자','이름','조건','면접관수','형태','브라우저','배정순번'],
+      uploads:     ['시각','참가자','이름','조건','문항','파일명','크기'],
+      logs:        ['시각','참가자','이름','조건','문항','이벤트','비고']
     }[name];
     if (head) sh.appendRow(head);
   }
@@ -150,7 +171,7 @@ function 현황보기() {
   const rows = sheet('assignments').getDataRange().getValues();
   const count = {};
   CONDITIONS.forEach(c => count[c.code] = 0);
-  for (let i = 1; i < rows.length; i++) if (count[rows[i][2]] !== undefined) count[rows[i][2]]++;
+  for (let i = 1; i < rows.length; i++) if (count[rows[i][3]] !== undefined) count[rows[i][3]]++;
   Logger.log('총 %s명', rows.length - 1);
   CONDITIONS.forEach(c =>
     Logger.log('%s (%s명 %s) : %s명', c.code, c.agents, c.form, count[c.code]));

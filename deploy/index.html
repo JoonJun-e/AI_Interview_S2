@@ -649,6 +649,7 @@ $("btnLogin").onclick=()=>{
   if(!backendOn() || adminMode) pid=($("pid")&&$("pid").value.trim())||pid||"P00";
   if(backendOn() && !adminMode && !condCode) return;   // 배정 전에는 진행 불가
   pname=$("pname").value.trim()||"지원자";
+  if(backendOn() && pid) callBackend({ action:"name", participant_id:pid, name:pname }).catch(()=>{});
   addLog("login",`agents=${nAgents};form=${form};cond=${condCode}`);
   $("ntProcess").innerHTML = COPY[sufx()].process;
   show("scr-intro");
@@ -940,7 +941,7 @@ function uploadRecording(blob, filename, qkey){
   const fr=new FileReader();
   fr.onload=()=>{
     const b64=String(fr.result).split(",")[1];
-    callBackend({ action:"upload", participant_id:pid, condition:condCode,
+    callBackend({ action:"upload", participant_id:pid, participant_name:pname, condition:condCode,
                   question:qkey, filename, mime:blob.type||"audio/webm", data:b64 })
       .then(r=>{ r&&r.ok ? upStatus.ok++ : upStatus.fail++;
                  addLog("upload", `${filename}:${r&&r.ok?"ok":"fail"}`); })
@@ -953,7 +954,7 @@ function uploadRecording(blob, filename, qkey){
 function pushLogs(){
   if(!backendOn()) return Promise.resolve();
   return callBackend({ action:"log",
-    rows: log.map(r=>({ t:r.t, pid:r.pid, cond:condCode||r.cond,
+    rows: log.map(r=>({ t:r.t, pid:r.pid, name:r.pname, cond:condCode||r.cond,
                         q:r.q, event:r.event, extra:r.extra })) }).catch(()=>{});
 }
 
