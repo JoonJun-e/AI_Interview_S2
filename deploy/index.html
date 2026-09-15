@@ -179,6 +179,51 @@
   .vwave span:nth-child(5){height:10px;animation-delay:.5s}
   .vwave span{background:var(--speak)}
 
+  /* ── 싱글 에이전트(형태 없음) : 오디오 진폭 반응형 오브 ──
+     --amp (0~1) 값을 JS가 매 프레임 갱신하면 크기·발광·블롭 농도가 함께 움직인다. */
+  .voice-panel.solo{gap:0;background:radial-gradient(120% 120% at 50% 28%,
+    #f8faff 0%,#eff2fa 58%,#e6eaf4 100%)}
+  .vc.orb-mode{gap:22px;--orb:178px;--stage:240px}
+  .voice-panel:not(.solo) .vc.orb-mode{--orb:126px;--stage:168px}
+  .vc.orb-mode .dot,.vc.orb-mode .vwave{display:none!important}
+  .orb-stage{--amp:0;position:relative;width:var(--stage);height:var(--stage);
+    display:flex;align-items:center;justify-content:center;
+    animation:orb-breathe 6s ease-in-out infinite}
+  @keyframes orb-breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.015)}}
+  .orb{position:relative;width:var(--orb);height:var(--orb);border-radius:50%;
+    overflow:hidden;background:#dfe7fb;
+    box-shadow:0 14px 32px rgba(84,104,190,.24);
+    transform:scale(calc(1 + var(--amp) * .16));
+    transition:transform .07s cubic-bezier(.2,.8,.3,1)}
+  .orb svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+
+  /* ── 구름이 "변형"되는 원리 ──────────────────────────────
+     feTurbulence 노이즈 필드를 filterUnits="userSpaceOnUse" 로 화면에 못박고,
+     그 아래로 그라데이션 판을 흘려보낸다. 판이 움직이면 같은 지점에 걸리는
+     노이즈 값이 매번 달라지므로 구름 무늬 자체가 계속 다시 그려진다.
+     (레이어를 통째로 transform 하면 무늬가 고정된 채 미끄러지기만 한다) */
+  /* 주기는 실측으로 맞춘 값 — 실제 ChatGPT 오브의 변화 속도가
+     0.25초당 픽셀 8.3% 였고, 이 설정이 약 11% 다. (이전 14s/21s 는 0.38% 로 22배 느렸다)
+     7.5 와 11.4 는 정수비가 아니라 두 겹의 합성 패턴이 눈에 띄게 반복되지 않는다. */
+  .src{animation:flow 7.5s ease-in-out infinite}
+  @keyframes flow{0%{transform:translate(0,30px)}     25%{transform:translate(-30px,-34px)}
+                  50%{transform:translate(34px,-30px)} 75%{transform:translate(30px,34px)}
+                  100%{transform:translate(0,30px)}}
+  .src2{animation:flow2 11.4s ease-in-out infinite}
+  @keyframes flow2{0%{transform:translate(0,-30px)}    33%{transform:translate(30px,34px)}
+                   66%{transform:translate(-34px,30px)} 100%{transform:translate(0,-30px)}}
+  .lay2{opacity:.42}
+  /* 음량이 커지면 그라데이션이 내려와 파란 하늘이 차오른다
+     (실측: ChatGPT 오브의 파랑 면적 58~87%, 본 구현 61~84%) */
+  .ampshift{transform:translateY(calc(var(--amp) * 66px));
+    transition:transform .08s cubic-bezier(.2,.8,.3,1)}
+  .vc.orb-mode .vlabel{font-size:14px}
+  .vc.orb-mode.speaking .vlabel{color:#4453c9}
+  @media (prefers-reduced-motion:reduce){
+    .orb-stage,.src,.src2{animation:none!important}
+    .orb,.ampshift{transition:none!important}
+  }
+
   /* 지원자 */
   .selfcam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
   .selfcam .nameplate{left:11px;bottom:10px}
@@ -371,7 +416,27 @@
           <div class="mainstage" id="mainStage"></div>
           <div class="subrail" id="subRail"></div>
         </div>
-        <div class="voice-panel" id="voicePanel"></div>
+        <!-- 오브 구름결 정의 : 노이즈 필드를 userSpaceOnUse 로 고정해 두고
+     numOctaves 는 3 — 5와 육안 차이가 없으면서 필터 비용이 절반 이하다.
+     그 아래로 그라데이션을 흘려보내야 무늬가 변형된다. 시드별 필터 3개는 면접관 구분용. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+ <linearGradient id="orbGrad" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
+  <stop offset="0%" stop-color="#3b50e2"/>  <stop offset="16%" stop-color="#5a6dec"/>
+  <stop offset="30%" stop-color="#9cabf4"/> <stop offset="44%" stop-color="#e9eefd"/>
+  <stop offset="58%" stop-color="#f6f8ff"/> <stop offset="72%" stop-color="#e4ebfc"/>
+  <stop offset="84%" stop-color="#b9c8f7"/> <stop offset="100%" stop-color="#9db0f1"/>
+ </linearGradient>
+ <filter id="orbTurb0" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
+  <feTurbulence type="fractalNoise" baseFrequency="0.016 0.023" numOctaves="3" seed="29" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="62" xChannelSelector="R" yChannelSelector="G"/></filter>
+ <filter id="orbTurb1" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
+  <feTurbulence type="fractalNoise" baseFrequency="0.011 0.018" numOctaves="3" seed="7" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="78" xChannelSelector="R" yChannelSelector="G"/></filter>
+ <filter id="orbTurb2" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
+  <feTurbulence type="fractalNoise" baseFrequency="0.014 0.020" numOctaves="3" seed="53" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="70" xChannelSelector="R" yChannelSelector="G"/></filter>
+</defs></svg>
+<div class="voice-panel" id="voicePanel"></div>
 
         <div class="section-div"></div>
 
@@ -546,11 +611,17 @@ const IDLE_VIDEO = i => { const c=mediaCfg(); if(!c) return "";
 const STILL_IMG  = i => { const c=mediaCfg(); if(!c) return "";
   return `${c.dir}/${ nAgents===3 ? c.still(SEATS[i].no) : c.still() }`; };
 /* 형태 없음(Agent X) 조건 음성
-   assets/audio/Multi agent/M0_0.mp3, M1-1.mp3 … M3-2.mp3
+   assets/audio/Multi agent/Multi_<페르소나>_<키>.mp3
+     om=중년 남자(면접관1) · ywm=일반 여자(면접관2) · ym=일반 남자(면접관3)
    assets/audio/Single agent/S0_0.mp3, S1-1.mp3 … S3-2.mp3      */
+const MULTI_AUDIO_KEY = {
+  intro:"om_0", "1-1":"om_1_1",  "1-2":"om_1_2",
+  "2-1":"ywm_2_1", "2-2":"ywm_2_2",
+  "3-1":"ym_3_1",  "3-2":"ym_3_2"
+};
 const audKey = k => k==="intro" ? "0_0" : k;
 const AUDIO_FILE = q => encodeURI(nAgents===3
-  ? `assets/audio/Multi agent/M${audKey(q.key)}.mp3`
+  ? `assets/audio/Multi agent/Multi_${MULTI_AUDIO_KEY[q.key]}.mp3`
   : `assets/audio/Single agent/S${audKey(q.key)}.mp3`);
 
 /* ══════════════ STATE ══════════════ */
@@ -752,24 +823,33 @@ let tiles=[];
 
 function buildRoom(){
   const n = nAgents===3 ? 3 : 1;
-  tiles=[]; curFocus=-1;
+  tiles=[]; curFocus=-1; orbEls=[]; orbActive=-1;
 
   /* 형태 없음 조건 : 카메라 창을 쓰지 않는다.
      영상 조건과 같은 창 배치를 쓰면 "곧 얼굴이 나올 것"이라는
-     기대가 생겨 의도치 않은 자극이 되므로, 원형 + 파동만 표시. */
+     기대가 생겨 의도치 않은 자극이 되므로, 오브만 표시.
+     싱글·멀티에 같은 오브를 쓴다 — 에이전트 수 외의 시각 자극을 동일하게 유지. */
   if(form==="x"){
     $("panelBlock").style.display="none";
     $("voicePanel").classList.add("on");
+    $("voicePanel").classList.toggle("solo", n===1);
     const vp=$("voicePanel"); vp.innerHTML="";
     for(let i=0;i<n;i++){
       const label = n===3 ? `면접관 ${i+1}` : "면접관";
       const el=document.createElement("div");
-      el.className="vc"; el.dataset.a=i;
-      el.innerHTML=`<div class="dot">${micSvg}</div>
-        <div class="vlabel">${label}</div>
-        <div class="vwave"><span></span><span></span><span></span><span></span><span></span></div>`;
+      el.className="vc orb-mode"; el.dataset.a=i;
+      el.innerHTML=`<div class="orb-stage">
+          <div class="orb"><svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice">
+            <g filter="url(#orbTurb${i})"><g class="ampshift">
+              <rect class="src" x="-120" y="-180" width="440" height="560" fill="url(#orbGrad)"/></g></g>
+            <g filter="url(#orbTurb${(i+1)%3})" class="lay2"><g class="ampshift">
+              <rect class="src2" x="-120" y="-180" width="440" height="560" fill="url(#orbGrad)"/></g></g>
+          </svg></div>
+        </div>
+        <div class="vlabel">${label}</div>`;
       vp.appendChild(el);
       tiles.push(el);
+      orbEls.push(el.querySelector(".orb-stage"));
     }
     return;
   }
@@ -840,6 +920,74 @@ function focusAgent(a){
   });
   playIdles();                    // 재부착된 영상 재개
 }
+/* ══════════════ 오디오 반응형 오브 엔진 ══════════════
+   AnalyserNode로 재생 중인 mp3의 파형을 읽어 RMS → --amp(0~1) 로 넘긴다.
+   • createMediaElementSource 는 요소당 1회만 가능 → WeakMap 으로 캐시
+   • 그래프에 물린 뒤에는 destination 연결이 없으면 소리가 사라지므로 반드시 연결
+   • TTS(speechSynthesis) 폴백은 파형을 읽을 수 없어 의사(擬似) 파형으로 대체     */
+let orbEls=[], orbActive=-1, orbRAF=0, orbAmp=0, orbAnalyser=null, orbBuf=null, orbTTS=false;
+const orbSrcMap = new WeakMap();
+const isOrb = () => form==="x";          // 싱글·멀티 공통
+
+function ensureAudioCtx(){
+  if(!audioCtx){
+    const AC = window.AudioContext||window.webkitAudioContext;
+    if(!AC) return null;
+    try{ audioCtx = new AC(); }catch(e){ return null; }
+  }
+  if(audioCtx.state==="suspended") audioCtx.resume().catch(()=>{});
+  return audioCtx;
+}
+
+function orbAttach(audioEl){
+  const ctx = ensureAudioCtx();
+  if(!ctx) return false;
+  try{
+    if(!orbAnalyser){
+      orbAnalyser = ctx.createAnalyser();
+      orbAnalyser.fftSize = 1024;
+      orbAnalyser.smoothingTimeConstant = 0.72;
+      orbBuf = new Uint8Array(orbAnalyser.frequencyBinCount);
+    }
+    if(!orbSrcMap.has(audioEl)){
+      const src = ctx.createMediaElementSource(audioEl);
+      src.connect(orbAnalyser);
+      src.connect(ctx.destination);   // 빠뜨리면 무음이 된다
+      orbSrcMap.set(audioEl, src);
+    }
+    return true;
+  }catch(e){ console.warn("orb analyser", e); return false; }
+}
+
+function orbLoop(){
+  let level = 0;
+  if(orbTTS){
+    const t = performance.now()/1000;
+    level = 0.34 + 0.26*Math.abs(Math.sin(t*3.1)) + 0.14*Math.sin(t*7.3);
+  }else if(orbAnalyser){
+    orbAnalyser.getByteTimeDomainData(orbBuf);
+    let sum=0;
+    for(let i=0;i<orbBuf.length;i++){ const v=(orbBuf[i]-128)/128; sum+=v*v; }
+    level = Math.sqrt(sum/orbBuf.length) * 4.2;     // 발화 구간이 0.6~1.0 에 오도록
+  }
+  level = Math.max(0, Math.min(1, level));
+  /* attack 은 빠르게, release 는 느리게 — 말끝이 뚝 끊겨 보이지 않게 */
+  orbAmp += (level - orbAmp) * (level > orbAmp ? 0.45 : 0.11);
+  orbEls.forEach((el,i)=>el.style.setProperty("--amp", i===orbActive ? orbAmp.toFixed(3) : "0"));
+  orbRAF = requestAnimationFrame(orbLoop);
+}
+function orbStart(viaTTS, a){
+  if(!orbEls.length) return;
+  orbActive = (a==null ? 0 : a);
+  orbTTS = !!viaTTS;
+  cancelAnimationFrame(orbRAF);
+  orbLoop();
+}
+function orbStop(){
+  cancelAnimationFrame(orbRAF); orbRAF=0; orbTTS=false; orbAmp=0; orbActive=-1;
+  orbEls.forEach(el=>el.style.setProperty("--amp","0"));
+}
+
 function setSpeaking(a,on){
   tiles.forEach((el,i)=>el.classList.toggle("speaking", on && i===a));
   $("mainStage").classList.toggle("speaking", on && form!=="x");   // 초록 굵은 테두리
@@ -856,6 +1004,7 @@ speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
 const talkEl = a => tiles[a] ? tiles[a].querySelector(".v-talk") : null;
 
 function stopAllSpeech(){
+  orbStop();
   speechSynthesis.cancel();
   if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); curAudio=null; }
   tiles.forEach(el=>{
@@ -877,6 +1026,7 @@ function speakQuestion(q,onEnd){
   const finish=()=>{
     if(finished) return; finished=true;
     const t=talkEl(a); if(t){ t.classList.remove("show"); t.onended=null; }
+    orbStop();
     setSpeaking(a,false);
     onEnd&&onEnd();
   };
@@ -885,14 +1035,17 @@ function speakQuestion(q,onEnd){
     const audio=new Audio(AUDIO_FILE(q));
     curAudio=audio;
     audio.onended=finish;
+    audio.onplaying=()=>{ if(isOrb()) orbStart(false, a); };
     audio.onerror=()=>{
       const u=new SpeechSynthesisUtterance(q.text);
       u.lang="ko-KR"; u.rate=0.95;
       u.pitch = nAgents===3 ? AGENT_PITCH[a] : 1.0;
       if(koVoice) u.voice=koVoice;
       u.onend=finish; u.onerror=finish;
+      u.onstart=()=>{ if(isOrb()) orbStart(true, a); };
       speechSynthesis.cancel(); speechSynthesis.speak(u);
     };
+    if(isOrb()) orbAttach(audio);
     audio.play().catch(()=>audio.onerror());
   };
   const t=talkEl(a);
