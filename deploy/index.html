@@ -416,25 +416,39 @@
           <div class="mainstage" id="mainStage"></div>
           <div class="subrail" id="subRail"></div>
         </div>
-        <!-- 오브 구름결 정의 : 노이즈 필드를 userSpaceOnUse 로 고정해 두고
-     numOctaves 는 3 — 5와 육안 차이가 없으면서 필터 비용이 절반 이하다.
-     그 아래로 그라데이션을 흘려보내야 무늬가 변형된다. 시드별 필터 3개는 면접관 구분용. -->
+        <!-- 오브 정의 ────────────────────────────────────────────
+     · 필터(구름 무늬)는 A/B 두 겹뿐이고 3명이 공유한다 — 면접관 구분은 색으로만 한다.
+       (이전에는 시드별 필터 3개로 무늬가 서로 달랐다)
+     · 노이즈 필드를 userSpaceOnUse 로 고정해 두고 그 아래로 그라데이션을 흘려보내야 무늬가 변형된다.
+     · numOctaves 3 — 5와 육안 차이가 없으면서 필터 비용이 절반 이하. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
- <linearGradient id="orbGrad" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
+ <linearGradient id="orbGradA" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
   <stop offset="0%" stop-color="#3b50e2"/>  <stop offset="16%" stop-color="#5a6dec"/>
   <stop offset="30%" stop-color="#9cabf4"/> <stop offset="44%" stop-color="#e9eefd"/>
   <stop offset="58%" stop-color="#f6f8ff"/> <stop offset="72%" stop-color="#e4ebfc"/>
   <stop offset="84%" stop-color="#b9c8f7"/> <stop offset="100%" stop-color="#9db0f1"/>
  </linearGradient>
- <filter id="orbTurb0" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
+  <!-- 면접관 1 · 싱글 -->
+ <linearGradient id="orbGradB" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
+  <stop offset="0%" stop-color="#12a150"/>  <stop offset="16%" stop-color="#2fb763"/>
+  <stop offset="30%" stop-color="#86dba6"/> <stop offset="44%" stop-color="#e7fbef"/>
+  <stop offset="58%" stop-color="#f5fff9"/> <stop offset="72%" stop-color="#ddf6e7"/>
+  <stop offset="84%" stop-color="#aee5c3"/> <stop offset="100%" stop-color="#92d9ad"/>
+ </linearGradient>
+  <!-- 면접관 2 -->
+ <linearGradient id="orbGradC" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
+  <stop offset="0%" stop-color="#e0396b"/>  <stop offset="16%" stop-color="#ea5a82"/>
+  <stop offset="30%" stop-color="#f79cb6"/> <stop offset="44%" stop-color="#fde9ef"/>
+  <stop offset="58%" stop-color="#fff5f8"/> <stop offset="72%" stop-color="#fce1e9"/>
+  <stop offset="84%" stop-color="#f7bccd"/> <stop offset="100%" stop-color="#f1a8be"/>
+ </linearGradient>
+  <!-- 면접관 3 -->
+ <filter id="orbTurbA" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
   <feTurbulence type="fractalNoise" baseFrequency="0.016 0.023" numOctaves="3" seed="29" result="n"/>
   <feDisplacementMap in="SourceGraphic" in2="n" scale="62" xChannelSelector="R" yChannelSelector="G"/></filter>
- <filter id="orbTurb1" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
+ <filter id="orbTurbB" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
   <feTurbulence type="fractalNoise" baseFrequency="0.011 0.018" numOctaves="3" seed="7" result="n"/>
   <feDisplacementMap in="SourceGraphic" in2="n" scale="78" xChannelSelector="R" yChannelSelector="G"/></filter>
- <filter id="orbTurb2" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
-  <feTurbulence type="fractalNoise" baseFrequency="0.014 0.020" numOctaves="3" seed="53" result="n"/>
-  <feDisplacementMap in="SourceGraphic" in2="n" scale="70" xChannelSelector="R" yChannelSelector="G"/></filter>
 </defs></svg>
 <div class="voice-panel" id="voicePanel"></div>
 
@@ -823,7 +837,7 @@ let tiles=[];
 
 function buildRoom(){
   const n = nAgents===3 ? 3 : 1;
-  tiles=[]; curFocus=-1; orbEls=[]; orbActive=-1;
+  tiles=[]; curFocus=-1; orbEls=[]; orbActive=-1; orbIdleStop();
 
   /* 형태 없음 조건 : 카메라 창을 쓰지 않는다.
      영상 조건과 같은 창 배치를 쓰면 "곧 얼굴이 나올 것"이라는
@@ -838,12 +852,15 @@ function buildRoom(){
       const label = n===3 ? `면접관 ${i+1}` : "면접관";
       const el=document.createElement("div");
       el.className="vc orb-mode"; el.dataset.a=i;
-      el.innerHTML=`<div class="orb-stage">
+      const hue = ["A","B","C"][i];          // 면접관별 색 (파랑·초록·분홍)
+      el.innerHTML=`<div class="orb-stage" style="animation-delay:${-i*2.3}s">
           <div class="orb"><svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice">
-            <g filter="url(#orbTurb${i})"><g class="ampshift">
-              <rect class="src" x="-120" y="-180" width="440" height="560" fill="url(#orbGrad)"/></g></g>
-            <g filter="url(#orbTurb${(i+1)%3})" class="lay2"><g class="ampshift">
-              <rect class="src2" x="-120" y="-180" width="440" height="560" fill="url(#orbGrad)"/></g></g>
+            <g filter="url(#orbTurbA)"><g class="ampshift">
+              <rect class="src" x="-120" y="-180" width="440" height="560"
+                    style="animation-delay:${-i*2.9}s" fill="url(#orbGrad${hue})"/></g></g>
+            <g filter="url(#orbTurbB)" class="lay2"><g class="ampshift">
+              <rect class="src2" x="-120" y="-180" width="440" height="560"
+                    style="animation-delay:${-i*4.1}s" fill="url(#orbGrad${hue})"/></g></g>
           </svg></div>
         </div>
         <div class="vlabel">${label}</div>`;
@@ -851,6 +868,7 @@ function buildRoom(){
       tiles.push(el);
       orbEls.push(el.querySelector(".orb-stage"));
     }
+    orbIdleStop(); orbIdleStart();                // 셋 다 듣는 상태로 시작
     return;
   }
 
@@ -926,6 +944,40 @@ function focusAgent(a){
    • 그래프에 물린 뒤에는 destination 연결이 없으면 소리가 사라지므로 반드시 연결
    • TTS(speechSynthesis) 폴백은 파형을 읽을 수 없어 의사(擬似) 파형으로 대체     */
 let orbEls=[], orbActive=-1, orbRAF=0, orbAmp=0, orbAnalyser=null, orbBuf=null, orbTTS=false;
+let orbIdleRAF=0, orbIdleT0=0;
+
+/* 듣는 상태 ──────────────────────────────────────────────
+   발화 중이 아닌 오브를 --amp 0 으로 죽여두면 "꺼진 것"처럼 보인다.
+   사람 면접관이 듣고 있는 모습에 대응하도록, 느리고 작은 진폭으로 계속 숨쉬게 한다.
+   발화자(0~1)와 확실히 구분되도록 폭을 0.04~0.16 으로 묶어 둔다. */
+const ORB_LISTEN_MIN = 0.04, ORB_LISTEN_MAX = 0.16;
+/* 면접관마다 "주기"와 "위상"을 모두 다르게 준다.
+   위상만 어긋내면 주기가 같아 결국 같은 리듬으로 읽히므로,
+   서로 정수비가 아닌 주파수를 써서 셋이 겹치는 순간이 사실상 오지 않게 한다.
+   (두 성분의 합이라 각자 반복 주기도 길다) */
+const ORB_LISTEN = [
+  { f1:0.55, f2:0.31, ph:0.0 },   // 면접관 1 · 파랑
+  { f1:0.43, f2:0.26, ph:2.2 },   // 면접관 2 · 초록
+  { f1:0.67, f2:0.38, ph:4.1 },   // 면접관 3 · 분홍
+];
+function orbListenLevel(t, i){
+  const mid=(ORB_LISTEN_MIN+ORB_LISTEN_MAX)/2, half=(ORB_LISTEN_MAX-ORB_LISTEN_MIN)/2;
+  const c = ORB_LISTEN[i % ORB_LISTEN.length];
+  return mid + half*(0.65*Math.sin(t*c.f1 + c.ph) + 0.35*Math.sin(t*c.f2 + c.ph*1.7));
+}
+function orbIdleStart(){
+  if(orbIdleRAF || !orbEls.length) return;
+  orbIdleT0 = performance.now();
+  (function tick(){
+    const t=(performance.now()-orbIdleT0)/1000;
+    orbEls.forEach((el,i)=>{
+      if(i===orbActive) return;                    // 발화자는 orbLoop 이 맡는다
+      el.style.setProperty("--amp", orbListenLevel(t,i).toFixed(3));
+    });
+    orbIdleRAF=requestAnimationFrame(tick);
+  })();
+}
+function orbIdleStop(){ cancelAnimationFrame(orbIdleRAF); orbIdleRAF=0; }
 const orbSrcMap = new WeakMap();
 const isOrb = () => form==="x";          // 싱글·멀티 공통
 
@@ -973,7 +1025,7 @@ function orbLoop(){
   level = Math.max(0, Math.min(1, level));
   /* attack 은 빠르게, release 는 느리게 — 말끝이 뚝 끊겨 보이지 않게 */
   orbAmp += (level - orbAmp) * (level > orbAmp ? 0.45 : 0.11);
-  orbEls.forEach((el,i)=>el.style.setProperty("--amp", i===orbActive ? orbAmp.toFixed(3) : "0"));
+  if(orbEls[orbActive]) orbEls[orbActive].style.setProperty("--amp", orbAmp.toFixed(3));
   orbRAF = requestAnimationFrame(orbLoop);
 }
 function orbStart(viaTTS, a){
@@ -985,7 +1037,7 @@ function orbStart(viaTTS, a){
 }
 function orbStop(){
   cancelAnimationFrame(orbRAF); orbRAF=0; orbTTS=false; orbAmp=0; orbActive=-1;
-  orbEls.forEach(el=>el.style.setProperty("--amp","0"));
+  orbIdleStart();                                 // 전원 듣는 상태로 복귀
 }
 
 function setSpeaking(a,on){
