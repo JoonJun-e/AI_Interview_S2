@@ -311,6 +311,12 @@
         <button data-v="avatar">아바타</button>
         <button data-v="x">형태 없음</button>
       </div>
+      <label id="lblPersona">면접관 페르소나 (Single 전용)</label>
+      <div class="opt-group" id="grpPersona">
+        <button data-v="middle_man" class="sel">중년 남성</button>
+        <button data-v="young_woman">젊은 여성</button>
+        <button data-v="young_man">젊은 남성</button>
+      </div>
     </div>
     <div class="btn-row"><button class="btn" id="btnLogin">면접 시작하기</button></div>
   </div>
@@ -513,13 +519,12 @@ const SURVEY_URL = "";
    설치 방법은 backend/README.md 참고.                              */
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbymBYjAe68UYM82D44TuZTR82Q6UoKILNOhDFI7YeyFebzmYnm3EqNmpmrFvYYtmHud/exec";
 
-/* 면접관 배정
+/* 면접관 배정 (Multi 조건. Single 은 soloPersona 가 전 문항 담당)
    면접관 1 = 중년 남자  → 자기소개, 1-1, 1-2
-   면접관 2 = 일반 여자  → 2-1, 2-2
-   면접관 3 = 일반 남자  → 3-1, 3-2
-   vid  : assets/video/<form>/ 안의 파일명
-   audM : assets/audio/Multi agent/ 안의 파일명 (형태 없음 조건)
-   audS : assets/audio/Single agent/ 안의 파일명                       */
+   면접관 2 = 젊은 여자  → 2-1, 2-2
+   면접관 3 = 젊은 남자  → 3-1, 3-2
+   key 는 그대로 파일명이 된다 — 영상 assets/video/<form>/<persona>/<key>.mp4,
+   음성 assets/audio/voice/<persona>/<key>.mp3                          */
 const QUESTIONS = [
   { key:"intro", label:"자기소개", agent:1, sec:60,
     text:"자기소개 해주세요." },
@@ -553,6 +558,15 @@ const MAX_PLAYS     = 2;    // 문항 최대 재생 횟수
 /* 음성 낭독 중 문항 텍스트 숨김 (0813 수정사항 #14) */
 const HIDE_Q_WHILE_SPEAKING = true;
 
+/* 면접관 화면 모드
+   영상은 음성을 포함하므로 avatar · human 조건은 영상으로 재생한다.
+   다만 해당 조건의 영상이 하나라도 없으면 — 아직 제작 중인 부분 —
+   그 조건 전체를 정지 사진 + mp3 로 내린다.
+   한 조건 안에서 일부만 영상이면 참가자마다 자극이 달라지기 때문이다.
+   영상이 다 채워지면 자동으로 영상 모드로 돌아간다 (코드 수정 불필요). */
+const USE_VIDEO = true;          // false 로 두면 영상이 있어도 전부 사진 모드
+let videoMode = false;           // 조건 배정 후 resolveVideoMode() 가 결정
+
 /* 안내 음성 (파일을 넣으면 재생되며, 끝날 때까지 [다음] 버튼이 잠깁니다)
    assets/screens/notice_single.mp3 · notice_multi.mp3 */
 const NOTICE_AUDIO = () => `assets/screens/notice_${sufx()}.mp3`;
@@ -575,77 +589,51 @@ const COPY = {
 };
 const AGENT_PITCH   = [0.8, 1.05, 1.25];
 
-/* 화면 좌석 순서 = 원본 패널 사진 순서 (좌 · 중앙 · 우)
-   좌   = 일반 남자 → 면접관 3
-   중앙 = 중년 남자 → 면접관 1
-   우   = 일반 여자 → 면접관 2                                  */
-const SEATS = [ {no:3}, {no:1}, {no:2} ];
+/* 화면 좌석 순서 = 면접관 번호 순 (좀 · 중앙 · 우)
+   좌   = 면접관 1 → 중년 남자
+   중앙 = 면접관 2 → 젊은 여자
+   우   = 면접관 3 → 젊은 남자
+   형태없음(오브) 조건과 동일한 순서다.             */
+const SEATS = [ {no:1}, {no:2}, {no:3} ];
 const seatOf = agentNo => { const i = SEATS.findIndex(s=>s.no===agentNo); return i<0?0:i; };
 const agentName = agentNo => `면접관 ${agentNo}`;
 
-const IMG_SEAT   = i => `assets/${form}_multi_${i+1}.png`;
-const IMG_SINGLE = () => `assets/${form}_single.png`;
+/* ── 페르소나 ────────────────────────────
+   면접관 1 = 중년 남성(middle_man)  : 자기소개 · 1-1 · 1-2
+   면접관 2 = 젊은 여성(young_woman) : 2-1 · 2-2
+   면접관 3 = 젊은 남성(young_man)   : 3-1 · 3-2
+   Single 조건은 soloPersona 하나가 7문항 전부를 담당한다. */
+const PERSONAS         = ["middle_man","young_woman","young_man"];
+const PERSONA_OF_AGENT = { 1:"middle_man", 2:"young_woman", 3:"young_man" };
+const PERSONA_LABEL    = { middle_man:"중년 남성", young_woman:"젊은 여성", young_man:"젊은 남성" };
+const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 
-/* ── 영상 파일 설정 ────────────────────────────────────────────
-   실제 폴더 구조
-     assets/video/human/Multi/    assets/video/human/single/
-     assets/video/avatar/Multi/   assets/video/avatar/single/
-   새 영상을 넣거나 이름을 바꿀 때는 이 표만 고치면 됩니다.        */
-const singleSet = (dir, pre, wait) => ({
-  dir,
-  talk:{ "intro":`${pre}0-0.mp4`, "1-1":`${pre}1-1.mp4`, "1-2":`${pre}1-2.mp4`,
-         "2-1":`${pre}2-1.mp4`,  "2-2":`${pre}2-2.mp4`,
-         "3-1":`${pre}3-1.mp4`,  "3-2":`${pre}3-2.mp4` },
-  idle:()=>wait, still:()=>"still_single.jpg"
-});
-const MEDIA = {
-  human:{
-    multi:{ dir:"assets/video/human/Multi",
-      talk:{ "intro":"multi0-0.mp4", "1-1":"multi1-1.mp4", "1-2":"multi1-2.mp4",
-             "2-1":"multi2-1.mp4",  "2-2":"multi2-2.mp4",
-             "3-1":"Multi3-1.mp4",  "3-2":"Multi3-2.mp4" },
-      idle: no=>`M${no}-waiting.mp4`,
-      still: no=>`still_a${no}.jpg` },
-    single: singleSet("assets/video/human/single","human-single-","human-single-waiting.mp4")
-  },
-  avatar:{
-    multi:{ dir:"assets/video/avatar/Multi",
-      talk:{ "intro":"avatar-m0-0.mp4", "1-1":"avatar-m1-1.mp4", "1-2":"avatar-m1-2.mp4",
-             "2-1":"avatar-m2-1.mp4",  "2-2":"avatar-m2-2.mp4",
-             "3-1":"avatar-m3-1.mp4",  "3-2":"avatar-m3-2.mp4" },
-      idle: no=>`avatar-m-${no}-waiting.mp4`,
-      still: no=>`still_a${no}.jpg` },
-    single: singleSet("assets/video/avatar/single","single","single-waiting.mp4")
-  }
-};
-const mediaCfg = () => MEDIA[form] ? MEDIA[form][nAgents===3?"multi":"single"] : null;
-const TALK_VIDEO = q => { const c=mediaCfg(); return c ? `${c.dir}/${c.talk[q.key]}` : ""; };
-const IDLE_VIDEO = i => { const c=mediaCfg(); if(!c) return "";
-  return `${c.dir}/${ nAgents===3 ? c.idle(SEATS[i].no) : c.idle() }`; };
-const STILL_IMG  = i => { const c=mediaCfg(); if(!c) return "";
-  return `${c.dir}/${ nAgents===3 ? c.still(SEATS[i].no) : c.still() }`; };
-/* 형태 없음(Agent X) 조건 음성
-   assets/audio/Multi agent/Multi_<페르소나>_<키>.mp3
-     om=중년 남자(면접관1) · ywm=일반 여자(면접관2) · ym=일반 남자(면접관3)
-   assets/audio/Single agent/S0_0.mp3, S1-1.mp3 … S3-2.mp3      */
-const MULTI_AUDIO_KEY = {
-  intro:"om_0", "1-1":"om_1_1",  "1-2":"om_1_2",
-  "2-1":"ywm_2_1", "2-2":"ywm_2_2",
-  "3-1":"ym_3_1",  "3-2":"ym_3_2"
-};
-const audKey = k => k==="intro" ? "0_0" : k;
-const AUDIO_FILE = q => encodeURI(nAgents===3
-  ? `assets/audio/Multi agent/Multi_${MULTI_AUDIO_KEY[q.key]}.mp3`
-  : `assets/audio/Single agent/S${audKey(q.key)}.mp3`);
+const IMG_PERSONA = p => `assets/persona/${form}_${p}.jpg`;
+const IMG_SEAT    = i => IMG_PERSONA(PERSONA_OF_AGENT[SEATS[i].no]);
+const IMG_SINGLE  = () => IMG_PERSONA(soloPersona);
+
+/* ── 영상 파일 설정 ───────────────────────
+   음성과 동일한 페르소나 체계를 쓴다.
+     assets/video/<form>/<persona>/intro.mp4 · 1-1.mp4 … 3-2.mp4
+     assets/video/<form>/<persona>/idle.mp4   (무음 대기 영상)
+   파일이 없으면 talk → 음성+정지사진, idle → 정지사진으로 자동 대체된다. */
+const seatPersona = i => nAgents===3 ? PERSONA_OF_AGENT[SEATS[i].no] : soloPersona;
+const VIDEO_DIR   = p => `assets/video/${form}/${p}`;
+const TALK_VIDEO  = q => `${VIDEO_DIR(personaOf(q))}/${q.key}.mp4`;
+const IDLE_VIDEO  = i => `${VIDEO_DIR(seatPersona(i))}/idle.mp4`;
+const STILL_IMG   = i => IMG_PERSONA(seatPersona(i));
+/* 음성 : 형태없음(오브) 조건과, 영상이 없어 사진 모드로 내려간 조건에서 쓴다.
+   영상 내장 음성과 동일한 녹음이다.                                   */
+const AUDIO_FILE = q => `assets/audio/voice/${personaOf(q)}/${q.key}.mp3`;
 
 /* ══════════════ STATE ══════════════ */
 const $ = id => document.getElementById(id);
-let pid="", pname="", nAgents=3, form="human";
+let pid="", pname="", nAgents=3, form="human", soloPersona="middle_man";
 let idx=-1, plays=0, timerId=null, remain=0;
 let camStream=null, micStream=null, audioCtx=null, analyser=null, meterRAF=null;
 let recorder=null, chunks=[], recordings=[], curAudio=null;
 const log=[];
-const condName = () => `${nAgents===1?"single":"multi"}_${form}`;
+const condName = () => `${nAgents===1?"single":"multi"}_${form}${nAgents===1?"_"+soloPersona:""}`;
 const addLog=(event,extra="")=>log.push({
   t:new Date().toISOString(), pid, pname, cond:condName(),
   q: (idx>=0 && QUESTIONS[idx]) ? QUESTIONS[idx].key : "-", event, extra });
@@ -682,10 +670,11 @@ async function autoAssign(attempt=1){
     if(!res.ok) throw new Error(res.error||"assign failed");
     pid = res.participant_id; condCode = res.condition;
     nAgents = res.agents; form = res.form;
+    if(res.persona) soloPersona = res.persona;
     localStorage.setItem("ai_interview_pid", pid);
     $("pidShow").textContent = pid;
     $("btnLogin").disabled = false;
-    addLog("assigned", `${condCode};agents=${nAgents};form=${form}`);
+    addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
     return true;
   }catch(e){
     if(attempt < 3){
@@ -704,7 +693,19 @@ $("btnRetry").onclick=()=>{ show("scr-login"); autoAssign(); };
 document.querySelectorAll("#grpCount button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("#grpCount button").forEach(x=>x.classList.remove("sel"));
   b.classList.add("sel"); nAgents=+b.dataset.v;
+  syncPersonaUI();
 });
+document.querySelectorAll("#grpPersona button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#grpPersona button").forEach(x=>x.classList.remove("sel"));
+  b.classList.add("sel"); soloPersona=b.dataset.v;
+});
+/* 페르소나 선택은 Single 조건에서만 의미가 있다 (Multi 는 문항별 고정) */
+function syncPersonaUI(){
+  const on = nAgents===1;
+  const g=$("grpPersona"), l=$("lblPersona");
+  if(g) g.style.display = on ? "" : "none";
+  if(l) l.style.display = on ? "" : "none";
+}
 document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("#grpForm button").forEach(x=>x.classList.remove("sel"));
   b.classList.add("sel"); form=b.dataset.v;
@@ -719,6 +720,7 @@ document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
     $("manualBox").style.display="block";
     $("pidBox").style.display = backendOn() ? "block" : "none";
     if(backendOn()) $("pidShow").textContent="실험자 모드 (수동 선택)";
+    syncPersonaUI();
   }else{
     /* 참가자 모드 : 조건 선택도, 실험자용 저장 메뉴도 화면에서 제거한다.
        녹음·로그는 드라이브와 시트로 자동 전송되므로 참가자가 할 일이 없다. */
@@ -735,11 +737,65 @@ $("btnLogin").onclick=()=>{
   if(backendOn() && !adminMode && !condCode) return;   // 배정 전에는 진행 불가
   pname=$("pname").value.trim()||"지원자";
   if(backendOn() && pid) callBackend({ action:"name", participant_id:pid, name:pname }).catch(()=>{});
-  addLog("login",`agents=${nAgents};form=${form};cond=${condCode}`);
+  addLog("login",`agents=${nAgents};form=${form};cond=${condCode};persona=${nAgents===1?soloPersona:"-"}`);
   $("ntProcess").innerHTML = COPY[sufx()].process;
+  preflightAssets();
   show("scr-intro");
   playNoticeAudio();
 };
+
+/* 이 조건의 영상이 전부 있는지 확인해 영상/사진 모드를 정한다. */
+async function resolveVideoMode(){
+  if(!USE_VIDEO || form==="x"){ videoMode=false; return false; }
+  const need=[];
+  QUESTIONS.forEach(q => need.push(TALK_VIDEO(q)));
+  const n = nAgents===3 ? 3 : 1;
+  for(let i=0;i<n;i++) need.push(IDLE_VIDEO(i));
+  const uniq=[...new Set(need)]; const miss=[];
+  await Promise.all(uniq.map(u =>
+    fetch(u,{method:"HEAD"}).then(r=>{ if(!r.ok) miss.push(u); }).catch(()=>miss.push(u))));
+  videoMode = miss.length===0;
+  addLog(videoMode ? "video_mode" : "photo_mode",
+         videoMode ? uniq.length+" clips" : "missing "+miss.length+": "+miss.join(" | "));
+  if(!miss.length) return true;
+  console.warn("[영상 미완성 → 사진 모드]", miss);
+  return false;
+}
+
+/* 에셋 프리플라이트
+   배정된 조건에 필요한 파일이 실제로 있는지 먼저 확인한다.
+   영상이 빠지면 코드가 조용히 mp3+사진으로 대체해버려서,
+   모르고 진행하면 참가자마다 자극이 달라진다. 그래서 반드시 동으로 알린다. */
+async function preflightAssets(){
+  const need = [];
+  QUESTIONS.forEach(q => {
+    need.push(AUDIO_FILE(q));                       // x 조건 · 사진 모드에서 사용
+  });
+  if(form!=="x"){
+    const n = nAgents===3 ? 3 : 1;
+    for(let i=0;i<n;i++){
+      need.push(IMG_PERSONA(seatPersona(i)));
+    }
+  }
+  const uniq = [...new Set(need)];
+  const miss = [];
+  await Promise.all(uniq.map(u =>
+    fetch(u, { method:"HEAD" }).then(r => { if(!r.ok) miss.push(u); })
+                              .catch(() => miss.push(u))));
+  if(miss.length){
+    addLog("preflight_missing", miss.join(" | "));
+    console.error("[에셋 누락]", miss);
+    if(!backendOn() || adminMode){
+      const head = "\u26a0 \uc774 \uc870\uac74\uc5d0 \ud544\uc694\ud55c \ud30c\uc77c " + miss.length + "\uac1c\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.";
+      const list = miss.slice(0,8).join("\n") + (miss.length>8 ? "\n\u2026" : "");
+      const tail = "\uc774 \uc0c1\ud0dc\ub85c \uc9c4\ud589\ud558\uba74 \uc790\uadf9\uc774 \ub2ec\ub77c\uc9d1\ub2c8\ub2e4. \uc2e4\ud5d8\uc744 \uc911\ub2e8\ud558\uc138\uc694.";
+      alert(head + "\n\n" + list + "\n\n" + tail);
+    }
+  }else{
+    addLog("preflight_ok", uniq.length + " files");
+  }
+  return miss.length === 0;
+}
 
 /* 안내 음성 : 파일이 있으면 재생하고, 끝날 때까지 [다음] 버튼 잠금 */
 let noticeAudio=null;
@@ -796,9 +852,11 @@ $("btnDevices").onclick=async()=>{
   /* 권한이 확인되면 바로 시작 가능 (음성 크기 감지를 기다리지 않음) */
   $("btnToInterview").disabled=false;
 };
-$("btnToInterview").onclick=()=>{
+$("btnToInterview").onclick=async ()=>{
   cancelAnimationFrame(meterRAF);
   addLog("setup_done",`cam=${!!camStream};mic=${!!micStream}`);
+  $("btnToInterview").disabled=true;
+  await resolveVideoMode();          // 영상/사진 모드 확정 후 화면 구성
   show("scr-interview");
   buildRoom();
   $("selfName").textContent = pname || "지원자";
@@ -881,10 +939,12 @@ function buildRoom(){
     const el=document.createElement("div");
     el.className="tile"; el.dataset.a=i;
     el.innerHTML =
-      `<img src="${still}" alt="" onerror="this.onerror=null;this.src='${fallback}'">
+      (videoMode
+        ? `<img src="${still}" alt="" onerror="this.onerror=null;this.src='${fallback}'">
        <video class="v-idle" muted loop playsinline></video>
-       <video class="v-talk" playsinline></video>
-       <div class="badge"><i></i>발화 중</div>
+       <video class="v-talk" playsinline></video>`
+        : `<img src="${fallback}" alt="">`) +
+      `       <div class="badge"><i></i>발화 중</div>
        <div class="nameplate"><div class="nm">${label}</div></div>
        <div class="speak-ind"><span></span><span></span><span></span><span></span></div>`;
     tiles.push(el);
@@ -898,7 +958,7 @@ function buildRoom(){
    DOM에서 분리된 <video>는 브라우저가 자동 일시정지하므로
    타일을 옮길 때마다 다시 호출해야 멈춤(정지 사진) 현상이 없다. */
 function playIdles(){
-  if(form==="x") return;
+  if(!videoMode || form==="x") return;
   tiles.forEach((el,i)=>{
     const idle=el.querySelector(".v-idle");
     if(!idle) return;
@@ -914,7 +974,7 @@ function playIdles(){
 
 /* 블러 대기 화면에서는 대기 영상을 멈추고 정적 이미지(still)만 보이게 한다 */
 function pauseIdles(){
-  if(form==="x") return;
+  if(!videoMode || form==="x") return;
   tiles.forEach(el=>{
     const idle=el.querySelector(".v-idle");
     if(idle){ idle.pause(); idle.classList.remove("show"); }
@@ -1101,7 +1161,7 @@ function speakQuestion(q,onEnd){
     audio.play().catch(()=>audio.onerror());
   };
   const t=talkEl(a);
-  if(form!=="x" && t){
+  if(videoMode && form!=="x" && t){
     t.onended=finish; t.onerror=viaAudio;
     t.onplaying=()=>t.classList.add("show");   // 버퍼링 중 검은 화면 방지
     t.muted=false; t.preload="auto";
@@ -1147,6 +1207,7 @@ function uploadRecording(blob, filename, qkey){
   fr.onload=()=>{
     const b64=String(fr.result).split(",")[1];
     callBackend({ action:"upload", participant_id:pid, participant_name:pname, condition:condCode,
+                  persona: nAgents===1 ? soloPersona : "",
                   question:qkey, filename, mime:blob.type||"audio/webm", data:b64 })
       .then(r=>{ r&&r.ok ? upStatus.ok++ : upStatus.fail++;
                  addLog("upload", `${filename}:${r&&r.ok?"ok":"fail"}`); })

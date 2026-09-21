@@ -13,15 +13,26 @@
 const SHEET_ID  = '1mD3lP4jtQiDVYcUeQ6VJ_Br1i0qh9nthAOHOZ4UoZu0';  // AI면접_배정기록
 const FOLDER_ID = '1QWtun8uh4Ow9lJMFcAx536DSJHVwP7fr';             // AI면접_녹음
 
-// 조건 코드 : C1~C6  (agents = 1 | 3, form = x | avatar | human)
-const CONDITIONS = [
-  { code:'C1', agents:1, form:'x'      },
-  { code:'C2', agents:1, form:'avatar' },
-  { code:'C3', agents:1, form:'human'  },
-  { code:'C4', agents:3, form:'x'      },
-  { code:'C5', agents:3, form:'avatar' },
-  { code:'C6', agents:3, form:'human'  }
-];
+/* 배정 버킷
+   분석용 조건 코드는 C1~C6 그대로 유지하고,
+   Single(1명) 조건은 페르소나 3종을 하위 버킷으로 둠려 균등 배정한다.
+   즉 셀은 6개, 배정 버킷은 3×3 + 3 = 12개.
+   Multi(3명) 는 문항별로 세 페르소나가 고정 등장하므로 persona 는 빈 값. */
+const PERSONAS = ['middle_man', 'young_woman', 'young_man'];
+
+const CONDITIONS = [];
+[{ code:'C1', form:'x' }, { code:'C2', form:'avatar' }, { code:'C3', form:'human' }]
+  .forEach(function (c) {
+    PERSONAS.forEach(function (p) {
+      CONDITIONS.push({ code:c.code, agents:1, form:c.form, persona:p });
+    });
+  });
+[{ code:'C4', form:'x' }, { code:'C5', form:'avatar' }, { code:'C6', form:'human' }]
+  .forEach(function (c) {
+    CONDITIONS.push({ code:c.code, agents:3, form:c.form, persona:'' });
+  });
+
+const bucketKey = c => c.code + '|' + (c.persona || '');
 
 const TARGET_PER_CELL = 25;   // 조건당 목표 인원 (참고용, 초과해도 배정은 계속됨)
 
@@ -57,32 +68,40 @@ function assign(body) {
     if (body.participant_id) {
       for (let i = 1; i < rows.length; i++) {
         if (rows[i][1] === body.participant_id) {
-          const c = CONDITIONS.find(x => x.code === rows[i][3]);
+          const saved = String(rows[i][6] || '');
+          const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';   // 구버전 행 보호
+          const c = CONDITIONS.find(x => x.code === rows[i][3] &&
+                                         (x.agents === 3 || x.persona === per)) ||
+                    CONDITIONS.find(x => x.code === rows[i][3]);
           return { ok:true, participant_id:rows[i][1], condition:c.code,
-                   agents:c.agents, form:c.form, resumed:true };
+                   agents:c.agents, form:c.form, persona:c.persona || '', resumed:true };
         }
       }
     }
 
-    // 조건별 현재 인원
+    // 버킷별 현재 인원 (코드 + 페르소나)
     const count = {};
-    CONDITIONS.forEach(c => count[c.code] = 0);
+    CONDITIONS.forEach(c => count[bucketKey(c)] = 0);
     for (let i = 1; i < rows.length; i++) {
-      if (count[rows[i][3]] !== undefined) count[rows[i][3]]++;
+      const saved = String(rows[i][6] || '');
+      const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';
+      const k = rows[i][3] + '|' + per;
+      if (count[k] !== undefined) count[k]++;
     }
 
-    // 가장 적은 조건들 중 무작위
-    const min = Math.min.apply(null, CONDITIONS.map(c => count[c.code]));
-    const pool = CONDITIONS.filter(c => count[c.code] === min);
+    // 가장 적은 버킷들 중 무작위
+    const min = Math.min.apply(null, CONDITIONS.map(c => count[bucketKey(c)]));
+    const pool = CONDITIONS.filter(c => count[bucketKey(c)] === min);
     const picked = pool[Math.floor(Math.random() * pool.length)];
 
     const pid = body.participant_id || nextPid(rows);
     // 이름은 아직 모르므로 빈 칸으로 두고, 로그인 시 setName() 이 채웁니다.
     sh.appendRow([new Date(), pid, '', picked.code, picked.agents, picked.form,
-                  body.ua || '', min + 1]);
+                  picked.persona || '', body.ua || '', min + 1]);
 
     return { ok:true, participant_id:pid, condition:picked.code,
-             agents:picked.agents, form:picked.form, resumed:false,
+             agents:picked.agents, form:picked.form,
+             persona:picked.persona || '', resumed:false,
              counts:count, target:TARGET_PER_CELL };
   } finally {
     lock.releaseLock();
@@ -131,7 +150,8 @@ function upload(body) {
   const file  = dir.createFile(blob);
 
   sheet('uploads').appendRow([new Date(), pid, body.participant_name || '',
-                              body.condition || '', body.question || '', body.filename,
+                              body.condition || '', body.persona || '',
+                              body.question || '', body.filename,
                               Math.round(file.getSize() / 1024) + 'KB']);
   return { ok:true, file_id:file.getId() };
 }
@@ -152,8 +172,8 @@ function sheet(name) {
   if (!sh) {
     sh = ss.insertSheet(name);
     const head = {
-      assignments: ['시각','참가자','이름','조건','면접관수','형태','브라우저','배정순번'],
-      uploads:     ['시각','참가자','이름','조건','문항','파일명','크기'],
+      assignments: ['시각','참가자','이름','조건','면접관수','형태','페르소나','브라우저','배정순번'],
+      uploads:     ['시각','참가자','이름','조건','페르소나','문항','파일명','크기'],
       logs:        ['시각','참가자','이름','조건','문항','이벤트','비고']
     }[name];
     if (head) sh.appendRow(head);
@@ -170,9 +190,15 @@ function json(obj) {
 function 현황보기() {
   const rows = sheet('assignments').getDataRange().getValues();
   const count = {};
-  CONDITIONS.forEach(c => count[c.code] = 0);
-  for (let i = 1; i < rows.length; i++) if (count[rows[i][3]] !== undefined) count[rows[i][3]]++;
+  CONDITIONS.forEach(c => count[bucketKey(c)] = 0);
+  for (let i = 1; i < rows.length; i++) {
+    const saved = String(rows[i][6] || '');
+    const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';
+    const k = rows[i][3] + '|' + per;
+    if (count[k] !== undefined) count[k]++;
+  }
   Logger.log('총 %s명', rows.length - 1);
   CONDITIONS.forEach(c =>
-    Logger.log('%s (%s명 %s) : %s명', c.code, c.agents, c.form, count[c.code]));
+    Logger.log('%s (%s명 %s %s) : %s명', c.code, c.agents, c.form,
+               c.persona || '-', count[bucketKey(c)]));
 }
