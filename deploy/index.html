@@ -146,8 +146,8 @@
   @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
   #mainStage .tile.speaking .badge{display:flex}
   #mainStage .tile.speaking .speak-ind{display:flex}
-  #mainStage .tile.speaking img{animation:breathe 3s ease-in-out infinite}
-  @keyframes breathe{0%,100%{transform:scale(1.008)}50%{transform:scale(1.028)}}
+  /* 사진에는 어떤 움직임도 주지 않는다 — 영상 조건과 혼동되지 않게 완전히 정지시킨다.
+     (확대/축소를 주면 사진 모드에서 화면이 줌인·줌아웃하는 것처럼 보인다) */
   .subrail .nm{font-size:13.5px}
   .subrail .rl{font-size:11.5px}
   .subrail .nameplate{left:10px;bottom:9px}
@@ -759,6 +759,14 @@ async function resolveVideoMode(){
          videoMode ? uniq.length+" clips" : "missing "+miss.length+": "+miss.join(" | "));
   if(!miss.length) return true;
   console.warn("[영상 미완성 → 사진 모드]", miss);
+  /* 실험자에게는 반드시 알린다. 조용히 내려가면 고장으로 오해하거나,
+     모르고 참가자를 받아 조건별 자극이 달라진다. */
+  if(!backendOn() || adminMode){
+    alert("⚠ 이 조건은 영상이 " + miss.length +
+          "개 없어 사진 모드로 진행됩니다.\n" +
+          "면접관은 정지 사진으로만 표시되고 음성은 mp3 로 나옵니다.\n\n" +
+          miss.slice(0,8).join("\n") + (miss.length>8 ? "\n…" : ""));
+  }
   return false;
 }
 
