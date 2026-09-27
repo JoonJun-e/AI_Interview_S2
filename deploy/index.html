@@ -125,7 +125,9 @@
   /* 타일 공통 */
   .tile{position:absolute;inset:0;overflow:hidden;background:#20242e}
   .tile img,.tile video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-  .tile video{opacity:0;transition:opacity .2s}
+  /* 질문 · 다시듣기 대기 · 답변 대기 영상은 모두 같은 기본 자세 프레임에서 만나므로
+     페이드 없이 바로 바꾼다. 페이드를 주면 두 프레임이 겹쳐 보여 '깜빡'이는 것처럼 보인다. */
+  .tile video{opacity:0}
   .tile video.show{opacity:1}
   .nameplate{position:absolute;left:12px;bottom:11px;z-index:4;color:#fff}
   .nm{font-size:16px;font-weight:800;text-shadow:0 1px 6px rgba(0,0,0,.7);line-height:1.25}
@@ -569,7 +571,7 @@ let videoMode = false;           // 조건 배정 후 resolveVideoMode() 가 결
 /* 사전 안내 음성
    assets/audio/notice/single.mp3 · multi.mp3
    재생이 끝나야 [환경 설정으로 이동] 버튼이 풀린다. */
-const NOTICE_AUDIO = () => `assets/audio/notice/${sufx()}.mp3`;
+const NOTICE_AUDIO = () => av(`assets/audio/notice/${sufx()}.mp3`);
 const LOCK_UNTIL_NOTICE = true;  // 테스트 중 잠금을 풀려면 false (운영 시 true 로 되돌릴 것)
 
 const sufx = () => nAgents===1 ? "single" : "multi";
@@ -609,7 +611,13 @@ const PERSONA_OF_AGENT = { 1:"middle_man", 2:"young_woman", 3:"young_man" };
 const PERSONA_LABEL    = { middle_man:"중년 남성", young_woman:"젊은 여성", young_man:"젊은 남성" };
 const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 
-const IMG_PERSONA = p => `assets/persona/${form}_${p}.jpg`;
+/* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
+   vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
+   이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
+const ASSET_VERSION = "202609271836";
+const av = u => `${u}?v=${ASSET_VERSION}`;
+
+const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
 const IMG_SEAT    = i => IMG_PERSONA(PERSONA_OF_AGENT[SEATS[i].no]);
 const IMG_SINGLE  = () => IMG_PERSONA(soloPersona);
 
@@ -622,12 +630,20 @@ const IMG_SINGLE  = () => IMG_PERSONA(soloPersona);
    파일이 없으면 talk → 음성+정지사진, idle → 정지사진으로 자동 대체된다. */
 const seatPersona = i => nAgents===3 ? PERSONA_OF_AGENT[SEATS[i].no] : soloPersona;
 const VIDEO_DIR   = p => `assets/video/${form}/${p}`;
-const TALK_VIDEO  = q => `${VIDEO_DIR(personaOf(q))}/${q.key}.mp4`;
-const IDLE_VIDEO  = i => `${VIDEO_DIR(seatPersona(i))}/idle.mp4`;
+const TALK_VIDEO  = q => av(`${VIDEO_DIR(personaOf(q))}/${q.key}.mp4`);
+const IDLE_VIDEO  = i => av(`${VIDEO_DIR(seatPersona(i))}/idle.mp4`);
+const WAIT_VIDEO  = i => av(`${VIDEO_DIR(seatPersona(i))}/wait.mp4`);
+
+/* 면접관 영상 3종 — 모두 같은 기본 자세로 시작·끝나므로 서로 바로 이어 붙일 수 있다.
+     talk : 질문 낭독
+     wait : 다시 듣기 선택 5초 동안 (눈 깜빡임만 있는 클립, loop)
+            자세가 거의 변하지 않아서 언제 [다시 듣기]를 눌러도 질문 영상으로 튀지 않고 넘어간다.
+     idle : 답변을 듣는 동안 (5초 클립 여러 개를 이어 붙인 loop, 필기·끄덕임)
+   전환 : talk 끝 → wait(처음부터) → 답변 시작 → idle(처음부터)                      */
 const STILL_IMG   = i => IMG_PERSONA(seatPersona(i));
 /* 음성 : 형태없음(오브) 조건과, 영상이 없어 사진 모드로 내려간 조건에서 쓴다.
    영상 내장 음성과 동일한 녹음이다.                                   */
-const AUDIO_FILE = q => `assets/audio/voice/${personaOf(q)}/${q.key}.mp3`;
+const AUDIO_FILE = q => av(`assets/audio/voice/${personaOf(q)}/${q.key}.mp3`);
 
 /* ══════════════ STATE ══════════════ */
 const $ = id => document.getElementById(id);
@@ -753,7 +769,7 @@ async function resolveVideoMode(){
   const need=[];
   QUESTIONS.forEach(q => need.push(TALK_VIDEO(q)));
   const n = nAgents===3 ? 3 : 1;
-  for(let i=0;i<n;i++) need.push(IDLE_VIDEO(i));
+  for(let i=0;i<n;i++){ need.push(IDLE_VIDEO(i)); need.push(WAIT_VIDEO(i)); }
   const uniq=[...new Set(need)]; const miss=[];
   await Promise.all(uniq.map(u =>
     fetch(u,{method:"HEAD"}).then(r=>{ if(!r.ok) miss.push(u); }).catch(()=>miss.push(u))));
@@ -958,6 +974,7 @@ function buildRoom(){
       (videoMode
         ? `<img src="${still}" alt="" onerror="this.onerror=null;this.src='${fallback}'">
        <video class="v-idle" muted loop playsinline></video>
+       <video class="v-wait" muted loop playsinline preload="auto"></video>
        <video class="v-talk" playsinline></video>`
         : `<img src="${fallback}" alt="">`) +
       `       <div class="badge"><i></i>발화 중</div>
@@ -983,6 +1000,8 @@ function playIdles(){
       idle.setAttribute("src", IDLE_VIDEO(i));
     }
     idle.muted=true; idle.loop=true;
+    const w=el.querySelector(".v-wait");           // 다시듣기 대기 영상은 미리 받아만 둔다
+    if(w && !w.getAttribute("src")) w.setAttribute("src", WAIT_VIDEO(i));
     const p=idle.play();
     if(p&&p.then) p.then(()=>idle.classList.add("show")).catch(()=>{});
   });
@@ -993,7 +1012,10 @@ function pauseIdles(){
   if(!videoMode || form==="x") return;
   tiles.forEach(el=>{
     const idle=el.querySelector(".v-idle");
-    if(idle){ idle.pause(); idle.classList.remove("show"); }
+    /* 블러 동안 보이는 정지 사진 = 대기 영상 첫 프레임. 되감아 두어야 재개할 때 자세가 튀지 않는다 */
+    if(idle){ idle.pause(); idle.classList.remove("show"); try{ idle.currentTime=0; }catch(e){} }
+    const w=el.querySelector(".v-wait");
+    if(w){ w.pause(); w.classList.remove("show"); }
   });
 }
 
@@ -1130,6 +1152,18 @@ function pickVoice(){
 }
 speechSynthesis.onvoiceschanged=pickVoice; pickVoice();
 const talkEl = a => tiles[a] ? tiles[a].querySelector(".v-talk") : null;
+const idleEl = a => tiles[a] ? tiles[a].querySelector(".v-idle") : null;
+const waitEl = a => tiles[a] ? tiles[a].querySelector(".v-wait") : null;
+const safeSeek = (v,t) => { try{ v.currentTime=t; }catch(e){} };
+const safePlay = v => { const p=v.play(); if(p&&p.catch) p.catch(()=>{}); };
+
+/* 다시듣기 대기(wait) → 답변 대기(idle). 둘 다 기본 자세라 아무 때나 바꿔도 튀지 않는다 */
+function waitToIdle(a){
+  const w=waitEl(a), idle=idleEl(a);
+  if(!w || !w.classList.contains("show")) return;
+  if(idle){ safeSeek(idle,0); idle.classList.add("show"); safePlay(idle); }
+  w.classList.remove("show"); w.pause();
+}
 
 function stopAllSpeech(){
   orbStop();
@@ -1153,7 +1187,17 @@ function speakQuestion(q,onEnd){
   let finished=false;
   const finish=()=>{
     if(finished) return; finished=true;
-    const t=talkEl(a); if(t){ t.classList.remove("show"); t.onended=null; }
+    const t=talkEl(a);
+    if(t){
+      /* 질문 영상 마지막 프레임(기본 자세) → 다시듣기 대기 영상 첫 프레임(기본 자세)으로 즉시 전환.
+         대기 영상이 없으면 답변 대기 영상 첫 프레임으로. */
+      if(t.classList.contains("show")){
+        const w=waitEl(a), idle=idleEl(a);
+        if(w && w.readyState>=2){ w.classList.add("show"); safePlay(w); }
+        else if(idle){ safeSeek(idle,0); idle.classList.add("show"); safePlay(idle); }
+      }
+      t.classList.remove("show"); t.onended=null;
+    }
     orbStop();
     setSpeaking(a,false);
     onEnd&&onEnd();
@@ -1179,7 +1223,16 @@ function speakQuestion(q,onEnd){
   const t=talkEl(a);
   if(videoMode && form!=="x" && t){
     t.onended=finish; t.onerror=viaAudio;
-    t.onplaying=()=>t.classList.add("show");   // 버퍼링 중 검은 화면 방지
+    t.onplaying=()=>{                          // 버퍼링 중 검은 화면 방지
+      t.classList.add("show");
+      /* 질문 영상이 덮고 있는 동안 뒤의 대기 영상들을 멈추고 첫 프레임(기본 자세)으로 되감아 둔다 */
+      const idle=idleEl(a), w=waitEl(a);
+      if(idle){ idle.pause(); safeSeek(idle,0); }
+      if(w){
+        if(!w.getAttribute("src")) w.setAttribute("src", WAIT_VIDEO(a));
+        w.pause(); safeSeek(w,0); w.classList.remove("show");
+      }
+    };
     t.muted=false; t.preload="auto";
     t.src=TALK_VIDEO(q); t.load(); t.currentTime=0;
     t.play().catch(viaAudio);
@@ -1312,6 +1365,7 @@ function afterQuestion(){
 function beginAnswer(){
   const q=QUESTIONS[idx];
   clearInterval(replayTimer); replayTimer=null;
+  if(videoMode && form!=="x") waitToIdle(agentIdx(q));   // 다시듣기 대기 → 답변 대기 영상
   setPhase("답변 녹음 중","rec");
   startRecording();
   renderQuestion(q.text);                 // 녹음 시작 시점에 문항 텍스트 노출
@@ -1376,7 +1430,7 @@ function finishInterview(){
   $("saveOverlay").classList.remove("on");
   $("prepOverlay").classList.remove("on");
   $("stageInner").classList.remove("blurred");
-  tiles.forEach(el=>{ const v=el.querySelector(".v-idle"); if(v) v.pause(); });
+  tiles.forEach(el=>{ el.querySelectorAll(".v-idle,.v-wait").forEach(v=>v.pause()); });
   addLog("interview_end");
   renderDownloads();
   show("scr-survey");

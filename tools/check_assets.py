@@ -28,6 +28,7 @@ def cond_assets(agents, form, solo=None):
     img = ["persona/%s_%s.jpg" % (form, p) for p in seats]
     vid = [("video/%s/%s/%s.mp4" % (form, QA[k] if agents==3 else solo, k)) for k in KEYS]
     vid += ["video/%s/%s/idle.mp4" % (form, p) for p in seats]
+    vid += ["video/%s/%s/wait.mp4" % (form, p) for p in seats]
     return mp3, img, vid
 
 def main():

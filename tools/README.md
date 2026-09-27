@@ -19,7 +19,8 @@ python3 tools/ingest_assets.py "받은폴더" --form avatar --persona young_woma
   파형으로 대조해 문항을 정합니다. 실제로 0926 배치에서 젊은여 2↔3, 젊은남 번호가 뒤섞여 있었습니다.
   일치도 0.85 미만이거나 2순위와 0.10 이상 차이 나지 않으면 옮기지 않고 보고만 합니다.
 - 영상 길이가 음성과 0.3초 이상 다르면 ⚠ 로 표시합니다 (끝 무음 패딩 등).
-- 파일명에 `silence` / `idle` / `침묵` / `대기` 가 있으면 대기 클립이며, 끝 번호(1~4)가 이어 붙이는 순서입니다.
+- 파일명에 `blink` / `깜빡` / `wait` / `replay` 가 있으면 **다시듣기 대기 클립** → `wait.mp4`.
+- 파일명에 `silence` / `idle` / `침묵` / `대기` 가 있으면 답변 대기 클립이며, 끝 번호(1~4)가 이어 붙이는 순서입니다.
 - 기존 파일을 덮어쓰게 되면 기존 파일은 `_to_delete/replaced/<날짜>/` 로 옮깁니다.
 
 ## 2. 배포용 파일 생성 — `build_assets.py`
@@ -32,9 +33,12 @@ python3 tools/build_assets.py --apply --only avatar/young_woman
 ```
 
 - 질문 영상 → `deploy/assets/video/<form>/<persona>/<key>.mp4`
-- 대기 클립 4개 → 이어 붙여 `idle.mp4` (소리 제거)
+- 답변 대기 클립(있는 것만, 1~4개) → 질문 영상 색에 맞춰 보정 후 이어 붙여 `idle.mp4` (24fps, 클립 경계 키프레임, 소리 제거)
+- 다시듣기 대기 클립 → 같은 보정으로 `wait.mp4`
+  질문 영상이 아직 없으면 보정 없이 만들고, 질문 영상이 들어오면 다음 실행 때 자동으로 다시 만듭니다.
 - `idle.mp4` 첫 프레임 → `deploy/assets/persona/<form>_<persona>.jpg`
-- 원본보다 결과가 새것이면 건너뜁니다. 해상도 설정을 바꾸면 전부 다시 만듭니다. 강제로 다시: `--force`
+- 새로 만든 게 있으면 `deploy/index.html` 의 `ASSET_VERSION` 을 갱신합니다 (브라우저 캐시 무효화).
+- 입력 파일(이름·크기·수정시각)과 해상도가 지난번과 같으면 건너뜁니다. 클립을 빼거나 바꿔도 알아서 다시 만듭니다. 강제로 다시: `--force`
 
 ## 3. 조건별 점검 — `check_assets.py`
 

@@ -10,6 +10,7 @@
   그래서 영상 속 음성을 deploy/assets/audio/voice/<persona>/<key>.mp3 와 파형으로 대조해
   어느 문항인지 정한다. 일치도가 낮거나 애매하면 옮기지 않고 보고만 한다.
 
+▸ 다시듣기 대기(눈 깜빡임) 클립은 파일명에 blink / wait / 깜빡 / replay 가 들어간 것 → wait.mp4
 ▸ 대기(청취) 클립은 파일명에 silence / idle / 침묵 / 대기 가 들어간 것.
   끝 번호 1~4 가 그대로 이어 붙이는 순서가 된다 → _source/video/<form>/<persona>/idle_<n>.mp4
 
@@ -35,6 +36,7 @@ PERSONA_HINTS = [("middle_man",  ["middle", "oldman", "중년"]),
                  ("young_woman", ["woman", "여"]),          # woman 을 man 보다 먼저 본다
                  ("young_man",   ["man", "남"])]
 IDLE_WORDS = ["silence", "idle", "침묵", "대기"]
+WAIT_WORDS = ["blink", "wait", "깜빡", "replay"]      # 다시듣기 대기(눈 깜빡임) 클립 → wait.mp4
 
 def guess(text, hints):
     t = text.lower()
@@ -90,11 +92,17 @@ def main():
                  "--form avatar|human --persona middle_man|young_woman|young_man 로 지정하세요.")
     print(f"== {name}  →  form={form}  persona={persona}\n")
 
-    idle, talk = [], []
+    idle, talk, wait = [], [], []
     for f in files:
-        (idle if any(w in os.path.basename(f).lower() for w in IDLE_WORDS) else talk).append(f)
+        b = os.path.basename(f).lower()
+        if any(w in b for w in WAIT_WORDS): wait.append(f)
+        elif any(w in b for w in IDLE_WORDS): idle.append(f)
+        else: talk.append(f)
 
     plan, problems = [], []
+    if len(wait) > 1: problems.append("다시듣기 대기 클립이 여러 개입니다: " + ", ".join(map(os.path.basename, wait)))
+    elif wait:
+        spec, dur = probe(wait[0]); plan.append((wait[0], "wait.mp4", f"다시듣기 대기  {spec} {dur:.2f}s"))
     # 대기 클립
     for f in idle:
         m = re.findall(r"(\d+)", os.path.splitext(os.path.basename(f))[0])
