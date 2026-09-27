@@ -614,7 +614,7 @@ const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 /* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
    vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
    이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
-const ASSET_VERSION = "202609271836";
+const ASSET_VERSION = "202609272014";
 const av = u => `${u}?v=${ASSET_VERSION}`;
 
 const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
@@ -639,7 +639,20 @@ const WAIT_VIDEO  = i => av(`${VIDEO_DIR(seatPersona(i))}/wait.mp4`);
      wait : 다시 듣기 선택 5초 동안 (눈 깜빡임만 있는 클립, loop)
             자세가 거의 변하지 않아서 언제 [다시 듣기]를 눌러도 질문 영상으로 튀지 않고 넘어간다.
      idle : 답변을 듣는 동안 (5초 클립 여러 개를 이어 붙인 loop, 필기·끄덕임)
-   전환 : talk 끝 → wait(처음부터) → 답변 시작 → idle(처음부터)                      */
+   전환 : talk 끝 → wait(처음부터) → 답변 시작 → idle(무작위 클립 경계부터)
+
+   idle 시작 위치 (방안 A)
+     클립 순서(1→2→3→4→1…)는 모든 참가자·문항에서 같게 두고, 시작하는 클립만 무작위로 고른다.
+     답변이 시작될 때마다, 그리고 면접관(좌석)마다 따로 뽑으므로
+     문항마다 같은 동작으로 시작하지 않고, Multi 에서 세 면접관이 같은 박자로 움직이지 않는다.
+     클립 경계는 모두 기본 자세라 어디서 시작해도 튀지 않는다. 뽑힌 클립은 로그(idle_start)에 남는다. */
+const IDLE_CLIP_SEC = 121/24;     // 클립 1개 길이 (build_assets.py 의 CLIP_FRAMES / IDLE_FPS)
+function seekIdleRandom(v, seat, why){
+  const n = Math.max(1, Math.round((v.duration||0)/IDLE_CLIP_SEC));   // 이 영상의 클립 수 (아바타 3 · 사람 4 등)
+  const k = Math.floor(Math.random()*n);
+  try{ v.currentTime = k*IDLE_CLIP_SEC + 0.001; }catch(e){}
+  addLog("idle_start",`seat=${seat};clip=${k+1}/${n};at=${why}`);
+}
 const STILL_IMG   = i => IMG_PERSONA(seatPersona(i));
 /* 음성 : 형태없음(오브) 조건과, 영상이 없어 사진 모드로 내려간 조건에서 쓴다.
    영상 내장 음성과 동일한 녹음이다.                                   */
@@ -759,9 +772,40 @@ $("btnLogin").onclick=()=>{
   addLog("login",`agents=${nAgents};form=${form};cond=${condCode};persona=${nAgents===1?soloPersona:"-"}`);
   $("ntProcess").innerHTML = COPY[sufx()].process;
   preflightAssets();
+  /* 조건이 정해진 지금부터 면접 영상을 전부 미리 받는다.
+     안내 음성(약 106초) + 환경 설정 동안 받아 두면 면접 중에는 네트워크를 기다리지 않는다. */
+  modePromise = resolveVideoMode().then(ok=>{ if(ok) prefetchPromise=prefetchMedia(); return ok; });
   show("scr-intro");
   playNoticeAudio();
 };
+
+/* ── 면접 영상 미리 받기 ──────────────────
+   질문·대기 영상을 blob 으로 받아 메모리에 둔다 (Single 약 60~80MB).
+   재생 지연이 참가자·문항마다 달라지면 자극 타이밍이 달라지므로,
+   면접 화면에 들어가기 전에 전부 받아 두는 것을 원칙으로 한다. */
+let modePromise=null, prefetchPromise=null;
+const BLOB={};                               // 원래 주소 → blob: 주소
+const mediaSrc = u => BLOB[u] || u;          // 받아 둔 게 있으면 그것을, 없으면 네트워크 주소
+async function prefetchMedia(){
+  const list=[];
+  QUESTIONS.forEach(q=>list.push(TALK_VIDEO(q)));
+  const n = nAgents===3 ? 3 : 1;
+  for(let i=0;i<n;i++){ list.push(IDLE_VIDEO(i)); list.push(WAIT_VIDEO(i)); }
+  const uniq=[...new Set(list)];
+  const t0=performance.now(); let k=0, bytes=0, fail=0;
+  addLog("prefetch_start",`files=${uniq.length}`);
+  const worker=async()=>{
+    while(k<uniq.length){
+      const u=uniq[k++];
+      try{
+        const r=await fetch(u); if(!r.ok) throw new Error(r.status);
+        const b=await r.blob(); bytes+=b.size; BLOB[u]=URL.createObjectURL(b);
+      }catch(e){ fail++; }
+    }
+  };
+  await Promise.all([worker(),worker(),worker()]);
+  addLog("prefetch_done",`files=${uniq.length};fail=${fail};mb=${(bytes/1e6).toFixed(1)};ms=${Math.round(performance.now()-t0)}`);
+}
 
 /* 이 조건의 영상이 전부 있는지 확인해 영상/사진 모드를 정한다. */
 async function resolveVideoMode(){
@@ -888,7 +932,15 @@ $("btnToInterview").onclick=async ()=>{
   cancelAnimationFrame(meterRAF);
   addLog("setup_done",`cam=${!!camStream};mic=${!!micStream}`);
   $("btnToInterview").disabled=true;
-  await resolveVideoMode();          // 영상/사진 모드 확정 후 화면 구성
+  await (modePromise || resolveVideoMode());   // 영상/사진 모드 확정 후 화면 구성
+  if(prefetchPromise){                          // 영상을 다 받을 때까지 대기 (최대 90초, 넘으면 네트워크로 진행)
+    const label=$("btnToInterview").textContent;
+    $("btnToInterview").textContent="면접 영상 준비 중…";
+    let timedOut=false;
+    await Promise.race([prefetchPromise, new Promise(r=>setTimeout(()=>{ timedOut=true; r(); },90000))]);
+    if(timedOut) addLog("prefetch_timeout");
+    $("btnToInterview").textContent=label;
+  }
   show("scr-interview");
   buildRoom();
   $("selfName").textContent = pname || "지원자";
@@ -909,6 +961,7 @@ function startCountdown(){
   pauseIdles();                       // 블러 뒤 배경은 정적 이미지
   $("stageInner").classList.add("blurred");
   $("prepOverlay").classList.add("on");
+  primeTalk(0);                       // 블러 뒤에서 첫 질문 영상 첫 프레임으로 바꿔 둠
   addLog("start_countdown",`sec=${START_COUNT}`);
   const iv=setInterval(()=>{
     left--;
@@ -985,6 +1038,7 @@ function buildRoom(){
   $("subRail").style.display = n>1 ? "flex" : "none";
   focusAgent(0);
   playIdles();
+  preloadTalk(0);                 // 첫 문항 영상은 카운트다운 동안 받아 둔다
 }
 
 /* 대기 영상 재생 · 재개
@@ -997,11 +1051,18 @@ function playIdles(){
     if(!idle) return;
     if(!idle.getAttribute("src")){
       idle.onerror=()=>idle.classList.remove("show");
-      idle.setAttribute("src", IDLE_VIDEO(i));
+      idle.setAttribute("src", mediaSrc(IDLE_VIDEO(i)));
     }
     idle.muted=true; idle.loop=true;
+    /* 처음 시작하거나 블러 뒤 재개할 때만 시작 클립을 새로 뽑는다.
+       (타일을 옮길 때도 이 함수가 불리는데, 그때 뽑으면 동작 중간에 튄다) */
+    if(idle.dataset.fresh!=="0"){
+      idle.dataset.fresh="0";
+      if(idle.readyState>=1) seekIdleRandom(idle, i, "resume");
+      else idle.addEventListener("loadedmetadata", ()=>seekIdleRandom(idle, i, "resume"), {once:true});
+    }
     const w=el.querySelector(".v-wait");           // 다시듣기 대기 영상은 미리 받아만 둔다
-    if(w && !w.getAttribute("src")) w.setAttribute("src", WAIT_VIDEO(i));
+    if(w && !w.getAttribute("src")) w.setAttribute("src", mediaSrc(WAIT_VIDEO(i)));
     const p=idle.play();
     if(p&&p.then) p.then(()=>idle.classList.add("show")).catch(()=>{});
   });
@@ -1013,7 +1074,7 @@ function pauseIdles(){
   tiles.forEach(el=>{
     const idle=el.querySelector(".v-idle");
     /* 블러 동안 보이는 정지 사진 = 대기 영상 첫 프레임. 되감아 두어야 재개할 때 자세가 튀지 않는다 */
-    if(idle){ idle.pause(); idle.classList.remove("show"); try{ idle.currentTime=0; }catch(e){} }
+    if(idle){ idle.pause(); idle.classList.remove("show"); try{ idle.currentTime=0; }catch(e){} idle.dataset.fresh="1"; }
     const w=el.querySelector(".v-wait");
     if(w){ w.pause(); w.classList.remove("show"); }
   });
@@ -1157,11 +1218,38 @@ const waitEl = a => tiles[a] ? tiles[a].querySelector(".v-wait") : null;
 const safeSeek = (v,t) => { try{ v.currentTime=t; }catch(e){} };
 const safePlay = v => { const p=v.play(); if(p&&p.catch) p.catch(()=>{}); };
 
+/* 질문 영상 미리 받기 — 재생 버튼을 누른 뒤 네트워크로 받느라 1~3초 멈춰 있지 않도록,
+   첫 문항은 카운트다운 동안, 다음 문항은 답변하는 동안 미리 받아 둔다. */
+function preloadTalk(i){
+  if(!videoMode || form==="x") return;
+  const q=QUESTIONS[i]; if(!q) return;
+  const t=talkEl(agentIdx(q)); if(!t) return;
+  const src=mediaSrc(TALK_VIDEO(q));
+  if(t.getAttribute("src")===src) return;
+  t.preload="auto"; t.setAttribute("src",src); t.load();
+}
+
+/* 질문 영상 첫 프레임을 블러 뒤에서 미리 띄워 둔다.
+   질문 영상은 첫 프레임부터 이미 말하는 자세(손짓·표정)라 기본 자세와 다르다.
+   카운트다운·저장 블러가 걸려 있는 동안 그 첫 프레임으로 바꿔 두면,
+   블러가 걷힐 때 이미 그 자세이므로 재생이 시작돼도 튀지 않는다. */
+function primeTalk(i){
+  if(!videoMode || form==="x") return;
+  const q=QUESTIONS[i]; if(!q) return;
+  preloadTalk(i);
+  const t=talkEl(agentIdx(q)); if(!t) return;
+  const showFirst=()=>{
+    if(!$("stageInner").classList.contains("blurred") || !t.paused) return;   // 이미 재생이 시작됐으면 건드리지 않음
+    safeSeek(t,0); t.classList.add("show"); t.dataset.primed="1";
+  };
+  if(t.readyState>=2) showFirst(); else t.addEventListener("loadeddata", showFirst, {once:true});
+}
+
 /* 다시듣기 대기(wait) → 답변 대기(idle). 둘 다 기본 자세라 아무 때나 바꿔도 튀지 않는다 */
 function waitToIdle(a){
   const w=waitEl(a), idle=idleEl(a);
   if(!w || !w.classList.contains("show")) return;
-  if(idle){ safeSeek(idle,0); idle.classList.add("show"); safePlay(idle); }
+  if(idle){ seekIdleRandom(idle, a, "answer"); idle.dataset.fresh="0"; idle.classList.add("show"); safePlay(idle); }
   w.classList.remove("show"); w.pause();
 }
 
@@ -1171,6 +1259,7 @@ function stopAllSpeech(){
   if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); curAudio=null; }
   tiles.forEach(el=>{
     const v=el.querySelector(".v-talk");
+    if(v && v.dataset.primed==="1") return;   // 블러 뒤에 띄워 둔 다음 질문 첫 프레임은 유지
     if(v){ v.onended=null; v.onerror=null; v.pause(); v.classList.remove("show"); }
   });
 }
@@ -1194,7 +1283,7 @@ function speakQuestion(q,onEnd){
       if(t.classList.contains("show")){
         const w=waitEl(a), idle=idleEl(a);
         if(w && w.readyState>=2){ w.classList.add("show"); safePlay(w); }
-        else if(idle){ safeSeek(idle,0); idle.classList.add("show"); safePlay(idle); }
+        else if(idle){ seekIdleRandom(idle, a, "answer"); idle.dataset.fresh="0"; idle.classList.add("show"); safePlay(idle); }
       }
       t.classList.remove("show"); t.onended=null;
     }
@@ -1222,19 +1311,28 @@ function speakQuestion(q,onEnd){
   };
   const t=talkEl(a);
   if(videoMode && form!=="x" && t){
+    /* 질문 영상이 실제로 뜰 때까지 면접관은 기본 자세로 멈춰 있게 한다.
+       (다시듣기 대기 영상이 떠 있으면 그대로 둔다 — 그것도 기본 자세) */
+    const w0=waitEl(a), idle0=idleEl(a);
+    if(!(w0 && w0.classList.contains("show")) && idle0){ idle0.pause(); safeSeek(idle0,0); }
+    const t0=performance.now(); let logged=false;
     t.onended=finish; t.onerror=viaAudio;
     t.onplaying=()=>{                          // 버퍼링 중 검은 화면 방지
+      t.dataset.primed="";
+      if(!logged){ logged=true; addLog("talk_playing",`delay_ms=${Math.round(performance.now()-t0)}`); }
       t.classList.add("show");
       /* 질문 영상이 덮고 있는 동안 뒤의 대기 영상들을 멈추고 첫 프레임(기본 자세)으로 되감아 둔다 */
       const idle=idleEl(a), w=waitEl(a);
       if(idle){ idle.pause(); safeSeek(idle,0); }
       if(w){
-        if(!w.getAttribute("src")) w.setAttribute("src", WAIT_VIDEO(a));
+        if(!w.getAttribute("src")) w.setAttribute("src", mediaSrc(WAIT_VIDEO(a)));
         w.pause(); safeSeek(w,0); w.classList.remove("show");
       }
     };
     t.muted=false; t.preload="auto";
-    t.src=TALK_VIDEO(q); t.load(); t.currentTime=0;
+    const src=mediaSrc(TALK_VIDEO(q));
+    if(t.getAttribute("src")!==src){ t.setAttribute("src",src); t.load(); }   // 미리 받아 둔 경우 다시 받지 않음
+    safeSeek(t,0);
     t.play().catch(viaAudio);
     return;
   }
@@ -1366,6 +1464,7 @@ function beginAnswer(){
   const q=QUESTIONS[idx];
   clearInterval(replayTimer); replayTimer=null;
   if(videoMode && form!=="x") waitToIdle(agentIdx(q));   // 다시듣기 대기 → 답변 대기 영상
+  preloadTalk(idx+1);                                      // 다음 문항 영상은 답변하는 동안 받아 둔다
   setPhase("답변 녹음 중","rec");
   startRecording();
   renderQuestion(q.text);                 // 녹음 시작 시점에 문항 텍스트 노출
@@ -1409,6 +1508,7 @@ function toSaving(){
   pauseIdles();                       // 블러 뒤 배경은 정적 이미지
   $("stageInner").classList.add("blurred");
   $("saveOverlay").classList.add("on");
+  primeTalk(idx+1);                   // 블러 뒤에서 다음 질문 영상 첫 프레임으로 바꿔 둠
   addLog("saving_start");
   setTimeout(()=>{
     $("stageInner").classList.remove("blurred");
