@@ -249,7 +249,7 @@
     color:var(--accent);font-variant-numeric:tabular-nums;background:#fff}
 
   /* 브랜드 */
-  .brandbar{display:flex;align-items:center;justify-content:space-between;
+  .brandbar{display:flex;align-items:center;justify-content:flex-start;
     padding-bottom:14px;border-bottom:1px solid var(--line);margin-bottom:20px}
   .brandbar img{height:34px}
   .brand-tag{font-size:12px;color:var(--sub);letter-spacing:.03em}
@@ -257,7 +257,7 @@
   /* 안내 화면 : 원본 문서 형태 그대로, 가로를 넓혀 스크롤 없이 */
   #scr-intro{max-width:1240px}
   .notice{font-size:16px;line-height:1.72;color:#1f2430;word-break:keep-all}
-  .notice p{margin-bottom:15px}
+  .notice p{margin-bottom:15px;word-break:keep-all}
   .notice p.tight{margin-bottom:6px}
   .notice b{font-weight:800}
   .notice .hl{color:#2f5fe0;font-weight:800}
@@ -339,37 +339,36 @@
 <div class="screen" id="scr-intro">
   <div class="card wide">
     <div class="brandbar">
-      <img src="assets/screens/aivora-logo.webp" alt="Aivora"
-           onerror="this.style.display='none'">
       <span class="brand-tag">AI Interview System</span>
     </div>
 
     <div class="notice">
       <p class="lead">안녕하세요, 반갑습니다!<br>
-        여러분은 지금부터 Aivora에서 직접 제작한 AI 면접 시스템을 체험하시게 됩니다.</p>
+        여러분은 지금부터 실제 채용 과정과 유사한 AI 면접 시스템을 체험하시게 됩니다.</p>
 
-      <p class="tight">이 시스템은 실제 채용 과정에서 활용될 수 있도록 저희 Aivora가 직접 설계한 면접 프로그램입니다.</p>
       <p id="ntProcess"></p>
 
-      <p>이번 실험에서는 실제 면접과 유사한 환경 속에서 지원자의 입장이 되어 질문에 응답하게 됩니다.
-         문항은 조직 내 소통 및 업무 상 의사결정 방식을 평가하기 위한 질문으로 구성되어 있습니다.</p>
+      <p>여러분은 실제 면접과 유사한 환경 속에서 지원자의 입장이 되어 질문에 응답하게 되며,<br>
+         면접은 약 10~15분 정도 소요됩니다.<br>
+         질문은 조직 내 소통 및 업무상 의사결정 방식을 평가하기 위한 내용으로 구성되어 있습니다.</p>
 
-      <p class="tight"><b>모든 문항은 최대 두 번까지 들을 수 있습니다.</b></p>
-      <p>첫 번째 재생이 끝난 후 5초 이내에 ‘다시 듣기’ 버튼을 누르면 질문을 한 번 더 들을 수 있습니다.
-         다시 듣기를 선택하지 않으면 5초 후에, 다시 듣기를 선택하면 두 번째 재생이 끝난 후에
-         답변 녹음이 자동으로 시작됩니다.</p>
+      <p class="tight"><b>모든 질문은 최대 두 번까지 들을 수 있습니다.</b></p>
+      <p>첫 번째 재생이 끝난 후 5초 이내에 ‘다시 듣기’ 버튼을 누르면 질문을 한 번 더 들을 수 있습니다.<br>
+         다시 듣기를 선택하지 않으면 5초 후에, 다시 듣기를 선택한 경우에는 두 번째 재생이 끝난 후
+         답변 녹음이 자동으로 시작됩니다.<br>
+         녹음이 시작되면 화면에 <b>빨간색으로 ‘녹음 중’</b>이 표시됩니다.</p>
 
-      <p>각 문항 별로 <b>최소 30초 이상 말씀해주셔야 다음 화면으로 넘어갈 수 있습니다.</b>
-         답변 제한시간은 자기소개 60초, 나머지 문항 90초입니다.</p>
+      <p>답변 시간은 화면 상단에 초 단위로 표시되며,<br>
+         각 질문에 대해 <b>최소 30초 이상 답변해야 다음 화면으로 넘어갈 수 있습니다.</b></p>
 
-      <p class="tight">모든 문항은 <b>답변 내용의 양과 적절성 그리고 순발력</b>을 바탕으로 평가합니다.
-         <b>답변이 구체적일수록 AI 면접관이 답변 내용을 더욱 정확하게 분석할 수 있습니다.</b></p>
-      <p>따라서 가능한 한 구체적인 사례와 세부적인 설명을 포함하여 성실하게 답변해주세요.</p>
+      <p class="tight"><b>답변은 내용의 구체성, 적절성 그리고 충실성</b>을 바탕으로 평가됩니다.</p>
+      <p><b>가능한 한 구체적인 사례와 세부적인 설명을 포함하여 성실하게 답변해주세요.</b></p>
 
-      <p>보다 정확한 평가를 위해 면접 중에는 검색이나 외부 도움없이 본인의 생각을 솔직하게 답변해주시기 바랍니다.
-         체험이 끝난 뒤에는 간단한 설문을 작성해주시면 됩니다.
-         오늘 수집된 데이터는 반드시 연구 목적으로만 사용되며,
-         여러분의 성실한 참여가 앞으로 시스템을 개선하는 데 큰 도움이 될 것입니다!</p>
+      <p>면접 체험이 끝난 후에는 간단한 설문을 작성해주시면 됩니다.<br>
+         오늘 수집된 데이터는 반드시 연구 목적으로만 사용됩니다.<br>
+         여러분의 성실한 참여가 향후 AI 면접 시스템을 개선하는 데 큰 도움이 될 것입니다!</p>
+
+      <p>이제 준비가 되었다면 면접을 시작해 주세요.</p>
     </div>
 
     <div class="btn-row">
@@ -567,24 +566,26 @@ const HIDE_Q_WHILE_SPEAKING = true;
 const USE_VIDEO = true;          // false 로 두면 영상이 있어도 전부 사진 모드
 let videoMode = false;           // 조건 배정 후 resolveVideoMode() 가 결정
 
-/* 안내 음성 (파일을 넣으면 재생되며, 끝날 때까지 [다음] 버튼이 잠깁니다)
-   assets/screens/notice_single.mp3 · notice_multi.mp3 */
-const NOTICE_AUDIO = () => `assets/screens/notice_${sufx()}.mp3`;
+/* 사전 안내 음성
+   assets/audio/notice/single.mp3 · multi.mp3
+   재생이 끝나야 [환경 설정으로 이동] 버튼이 풀린다. */
+const NOTICE_AUDIO = () => `assets/audio/notice/${sufx()}.mp3`;
+const LOCK_UNTIL_NOTICE = true;  // 테스트 중 잠금을 풀려면 false (운영 시 true 로 되돌릴 것)
 
 const sufx = () => nAgents===1 ? "single" : "multi";
 
-/* 조건별 안내 문구 (Aivora 안내문 기준) */
+/* 조건별 안내 문구 (0924 개정판)
+   single 과 multi 는 "한 명 / 세 명" 한 군데만 다르다. */
 const COPY = {
   single:{
-    process:`오늘 면접은 <b>한 명의 AI 면접관</b>이 <span class="hl">질문 제시부터 답변 평가까지</span>
-      회사가 정한 기준에 따라 진행합니다. 즉, 여러분의 답변은
-      <span class="hl">AI 면접관이 직접 분석하고 평가</span>하게 됩니다.`
+    process:`오늘 면접은 <b>한 명의 AI 면접관</b>이 회사가 정한 기준에 따라
+      <span class="hl">질문 제시부터 답변 분석 및 평가까지</span> 진행합니다.<br>
+      다만 본 체험에서는 개별 평가 점수나 합격 및 불합격 결과를 별도로 제공하지 않습니다.`
   },
   multi:{
-    process:`오늘 면접은 <b>세 명의 AI 면접관</b>이 <span class="hl">질문 제시부터 답변 평가까지</span>
-      회사가 정한 기준에 따라 진행합니다. 세 명의 AI 면접관은 질문을 나누어 제시하지만,
-      여러분의 모든 답변을 <span class="hl">각각 동일한 기준에 따라 분석하고 평가</span>합니다.
-      이후 세 명의 AI 면접관의 <span class="hl">분석 결과를 종합하여 최종 평가를 산출합니다</span>.`
+    process:`오늘 면접은 <b>세 명의 AI 면접관</b>이 회사가 정한 기준에 따라
+      <span class="hl">질문 제시부터 답변 분석 및 평가까지</span> 진행합니다.<br>
+      다만 본 체험에서는 개별 평가 점수나 합격 및 불합격 결과를 별도로 제공하지 않습니다.`
   }
 };
 const AGENT_PITCH   = [0.8, 1.05, 1.25];
@@ -615,7 +616,9 @@ const IMG_SINGLE  = () => IMG_PERSONA(soloPersona);
 /* ── 영상 파일 설정 ───────────────────────
    음성과 동일한 페르소나 체계를 쓴다.
      assets/video/<form>/<persona>/intro.mp4 · 1-1.mp4 … 3-2.mp4
-     assets/video/<form>/<persona>/idle.mp4   (무음 대기 영상)
+     assets/video/<form>/<persona>/idle.mp4   (무음 대기 영상 · 5초 클립 4개를 이어 붙인 약 20초, loop)
+   정지사진 assets/persona/<form>_<persona>.jpg 는 idle.mp4 첫 프레임이다.
+   위 파일들은 tools/build_assets.py 가 _source/ 에서 만든다 (직접 넣지 말 것).
    파일이 없으면 talk → 음성+정지사진, idle → 정지사진으로 자동 대체된다. */
 const seatPersona = i => nAgents===3 ? PERSONA_OF_AGENT[SEATS[i].no] : soloPersona;
 const VIDEO_DIR   = p => `assets/video/${form}/${p}`;
@@ -809,9 +812,14 @@ async function preflightAssets(){
 let noticeAudio=null;
 function playNoticeAudio(){
   const btn=$("btnToSetup");
+  const unlock=()=>{ btn.disabled=false; btn.textContent="환경 설정으로 이동"; };
+  if(!LOCK_UNTIL_NOTICE) unlock();
   const a=new Audio(NOTICE_AUDIO());
   noticeAudio=a;
-  a.onerror=()=>{ btn.disabled=false; btn.textContent="환경 설정으로 이동"; };
+  /* 파일이 없거나 재생에 실패하면 잠금은 풀되 로그에 남긴다 —
+     안내를 듣지 못한 참가자를 나중에 걸러낼 수 있어야 한다. */
+  let failed=false;
+  a.onerror=()=>{ if(!failed){ failed=true; addLog("notice_audio_fail", NOTICE_AUDIO()); } unlock(); };
   a.onended=()=>{ btn.disabled=false; btn.textContent="환경 설정으로 이동";
                   addLog("notice_audio_end"); };
   btn.disabled=true; btn.textContent="안내 음성 재생 중…";
