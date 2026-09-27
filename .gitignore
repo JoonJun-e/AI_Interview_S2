@@ -1,11 +1,17 @@
 # ── 저장소에 올리지 않는 것 ─────────────────────────────
-# 원본 1080p 영상 · 중복 백업 · 이전 버전 (로컬 보관용)
-/_archive/
+# 원본 영상 (deploy/ 용 파일은 tools/build_assets.py 가 여기서 만든다)
+/_source/
+# 버릴 파일 모음 — 확인 후 폴더째 삭제
+/_to_delete/
+# 빌드 설정 기록 (로컬용)
+deploy/assets/video/.build.json
 
-# 시스템 파일
+# 시스템 · 파이썬 캐시
 .DS_Store
 **/.DS_Store
 Thumbs.db
+__pycache__/
+*.pyc
 
 # ※ deploy/ 는 배포본이므로 반드시 포함됩니다.
 #   경로 앞의 / 를 빼면 deploy/assets/ 까지 제외되니 주의하세요.
