@@ -10,7 +10,8 @@
   그래서 영상 속 음성을 deploy/assets/audio/voice/<persona>/<key>.mp3 와 파형으로 대조해
   어느 문항인지 정한다. 일치도가 낮거나 애매하면 옮기지 않고 보고만 한다.
 
-▸ 다시듣기 대기(눈 깜빡임) 클립은 파일명에 blink / wait / 깜빡 / replay 가 들어간 것 → wait.mp4
+▸ 눈 깜빡임 클립은 파일명에 blink / wait / 깜빡 / replay 가 들어간 것 → blink_<끝 번호>.mp4
+  (build_assets.py 가 blink_1→2… 를 이어 붙여 wait.mp4 를 만든다)
 ▸ 대기(청취) 클립은 파일명에 silence / idle / 침묵 / 대기 가 들어간 것.
   끝 번호 1~4 가 그대로 이어 붙이는 순서가 된다 → _source/video/<form>/<persona>/idle_<n>.mp4
 
@@ -100,9 +101,10 @@ def main():
         else: talk.append(f)
 
     plan, problems = [], []
-    if len(wait) > 1: problems.append("다시듣기 대기 클립이 여러 개입니다: " + ", ".join(map(os.path.basename, wait)))
-    elif wait:
-        spec, dur = probe(wait[0]); plan.append((wait[0], "wait.mp4", f"다시듣기 대기  {spec} {dur:.2f}s"))
+    for f in wait:                                   # 눈 깜빡임 클립 → blink_<끝 번호>.mp4
+        m = re.findall(r"(\d+)", os.path.splitext(os.path.basename(f))[0])
+        n = int(m[-1]) if m else 1
+        spec, dur = probe(f); plan.append((f, f"blink_{n}.mp4", f"눈 깜빡임 {n}번  {spec} {dur:.2f}s"))
     # 대기 클립
     for f in idle:
         m = re.findall(r"(\d+)", os.path.splitext(os.path.basename(f))[0])

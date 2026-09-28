@@ -634,7 +634,7 @@ const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 /* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
    vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
    이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
-const ASSET_VERSION = "202609281551";
+const ASSET_VERSION = "202609281605";
 const av = u => `${u}?v=${ASSET_VERSION}`;
 
 const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
@@ -656,11 +656,12 @@ const WAIT_VIDEO  = i => av(`${VIDEO_DIR(seatPersona(i))}/wait.mp4`);
 
 /* 면접관 영상 3종 — 모두 같은 기본 자세로 시작·끝나므로 서로 바로 이어 붙일 수 있다.
      talk : 질문 낭독
-     wait : 다시 듣기 선택 5초 동안 (현재는 정지 화면. 눈 깜빡임 클립이 들어오면 교체)
+     wait : 눈 깜빡임 loop (blink_1 → blink_2, 약 10초). 다음 세 구간에 쓴다
+            ① 다시 듣기 선택 5초 (말한 면접관)  ② Multi 질문 중 나머지 면접관  ③ 답변 시작 후 4초 (전원)
             자세가 거의 변하지 않아서 언제 [다시 듣기]를 눌러도 질문 영상으로 튀지 않고 넘어간다.
      idle : 답변을 듣는 동안 (5초 클립 여러 개를 이어 붙인 loop, 필기·끄덕임)
    전환 : talk 끝 → wait(처음부터) → 답변 시작 → idle(무작위 클립 경계부터)
-   Multi 비발화 면접관 : 질문 중 · 다시 듣기 선택 중에는 정지 사진, 답변 중에만 idle
+   Multi 비발화 면접관 : 질문 중 · 다시 듣기 선택 중에는 wait(눈 깜빡임), 답변 중에만 idle
 
    idle 시작 위치 (방안 A)
      클립 순서(1→2→3→4→1…)는 모든 참가자·문항에서 같게 두고, 시작하는 클립만 무작위로 고른다.
@@ -1093,14 +1094,14 @@ function buildRoom(){
    DOM에서 분리된 <video>는 브라우저가 자동 일시정지하므로
    타일을 옮길 때마다 다시 호출해야 멈춤(정지 사진) 현상이 없다. */
 /* 대기(idle) 영상은 '답변을 듣는 구간'에서만 재생한다 (idlePhase).
-   질문 중 · 다시 듣기 선택 중에는 모든 면접관이 기본 자세 정지 화면이다.
-     - 말하는 면접관 : 질문 영상 → 끝나면 wait(정지 / 추후 눈 깜빡임)
-     - 나머지 면접관 : 대기 영상을 숨기고 정지 사진(= 대기 영상 첫 프레임 = 기본 자세)
-   답변이 시작되면 전원 대기 영상을 무작위 클립 경계(기본 자세)부터 재생 → 정지 화면에서 튀지 않는다.
-   ※ Multi 비발화 면접관용 눈 깜빡임 클립(5·10·15초)이 들어오면 이 정지 사진 자리를 대체할 예정. */
+   질문 중 · 다시 듣기 선택 중 · 답변 시작 후 4초 동안은 눈 깜빡임(wait)만 한다.
+     - 말하는 면접관 : 질문 영상 → 끝나면 wait
+     - 나머지 면접관 : wait (좌석마다 다른 클립에서 시작)
+   답변이 시작되면 전원 대기 영상을 무작위 클립 경계(기본 자세)부터 재생 → 눈 깜빡임에서 튀지 않는다.
+   wait·idle 모두 기본 자세로 시작·끝나서 서로 바로 바꿔도 튀지 않는다. */
 let idlePhase=false, idleTimer=null;
 /* 답변이 시작되자마자 끄덕이면 '말을 듣기도 전에 반응하는' 것처럼 보인다.
-   답변 시작 후 이 시간 동안은 정지 화면(기본 자세)을 유지하고, 그 뒤에 대기 영상을 시작한다.
+   답변 시작 후 이 시간 동안은 눈 깜빡임(wait)만 유지하고, 그 뒤에 대기 영상을 시작한다.
    대기 클립은 시작 후 0.6~3.5초 사이에 움직이기 시작하므로(0928 측정),
    첫 움직임은 답변 시작 후 약 4.6초 이후가 된다. */
 const ANSWER_STILL_SEC = 4;
@@ -1307,12 +1308,22 @@ function primeTalk(i){
   if(t.readyState>=2) showFirst(); else t.addEventListener("loadeddata", showFirst, {once:true});
 }
 
-/* 질문 시작 : 전원 대기 영상 정지 → 정지 사진 (말하는 면접관은 이어서 질문 영상이 덮는다) */
-function stillAll(){
+/* 질문 시작 : 전원 대기(idle) 영상 정지.
+   말하지 않는 면접관(Multi)은 눈 깜빡임(wait) loop 로 듣는다 — 좌석마다 다른 클립에서 시작.
+   말하는 면접관은 이어서 질문 영상이 덮고, 다시 듣기면 이미 떠 있는 눈 깜빡임을 그대로 둔다. */
+const WAIT_CLIP_SEC = 121/24;     // 눈 깜빡임 클립 1개 길이 (wait.mp4 = blink_1 → blink_2)
+function stillAll(speaker){
   idlePhase=false; clearTimeout(idleTimer); idleTimer=null;
-  tiles.forEach(el=>{
+  tiles.forEach((el,i)=>{
     const idle=el.querySelector(".v-idle");
     if(idle){ idle.pause(); idle.classList.remove("show"); }
+    if(i===speaker) return;
+    const w=el.querySelector(".v-wait");
+    if(w && !w.classList.contains("show") && w.readyState>=1){
+      const n=Math.max(1, Math.round((w.duration||0)/WAIT_CLIP_SEC));
+      safeSeek(w, Math.floor(Math.random()*n)*WAIT_CLIP_SEC + 0.001);
+      w.classList.add("show"); safePlay(w);
+    }
   });
 }
 /* 답변 시작 : 전원 대기 영상을 무작위 클립 경계(기본 자세)부터 재생 */
@@ -1499,7 +1510,7 @@ function playQuestion(){
   plays++;
   clearInterval(timerId);
   stopAllSpeech();
-  if(videoMode && form!=="x") stillAll();     // 질문·다시 듣기 선택 동안 전원 정지 화면
+  if(videoMode && form!=="x") stillAll(agentIdx(q));   // 질문·다시 듣기 선택 동안 대기 영상 정지, 나머지 면접관은 눈 깜빡임
   setPhase("질문 중");
   $("tval").classList.add("hidden");          // 낭독 중 타이머 숨김
   if(HIDE_Q_WHILE_SPEAKING) $("qtext").innerHTML="";
@@ -1535,7 +1546,7 @@ function afterQuestion(){
 function beginAnswer(){
   const q=QUESTIONS[idx];
   clearInterval(replayTimer); replayTimer=null;
-  if(videoMode && form!=="x"){                          // 정지 화면 유지 → ANSWER_STILL_SEC 뒤 전원 대기 영상
+  if(videoMode && form!=="x"){                          // 눈 깜빡임 유지 → ANSWER_STILL_SEC 뒤 전원 대기 영상
     clearTimeout(idleTimer);
     idleTimer=setTimeout(()=>{ idleTimer=null; startIdlesForAnswer(); }, ANSWER_STILL_SEC*1000);
   }

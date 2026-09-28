@@ -9,7 +9,7 @@
 만드는 것 (form = human | avatar, persona = middle_man | young_woman | young_man)
   deploy/assets/video/<form>/<persona>/<key>.mp4   말하는 영상 (key = intro, 1-1 … 3-2)
   deploy/assets/video/<form>/<persona>/idle.mp4    답변 대기 = 있는 idle_N 을 번호순(또는 order.txt 순서)으로 이어 붙임, 소리 제거
-  deploy/assets/video/<form>/<persona>/wait.mp4    다시듣기 대기 = wait.mp4 (눈 깜빡임 클립), 소리 제거
+  deploy/assets/video/<form>/<persona>/wait.mp4    듣기 대기(눈 깜빡임) = blink_1→blink_2… 를 이어 붙인 loop, 소리 제거
   deploy/assets/persona/<form>_<persona>.jpg       idle.mp4 첫 프레임 (블러 화면 · 사진 모드용)
 
 대기 클립 4개는 시작·끝 프레임이 같게 제작되어 있어 이어 붙이고 반복 재생해도 튀지 않는다.
@@ -138,10 +138,13 @@ def main():
             if stale(o, clips + talks, force, H): jobs.append(("idle", (clips, talks), o))
             j = os.path.join(IMG, f"{form}_{persona}.jpg")
             if stale(j, clips + talks, force, H): jobs.append(("still", [o], j, clips + talks))
+        # 다시듣기·듣기 대기(눈 깜빡임) : blink_1, blink_2 … 를 이어 붙여 wait.mp4. 없으면 예전 wait.mp4 한 개
+        blinks = sorted(glob.glob(os.path.join(pdir, "blink_*.mp4")))
         w = os.path.join(pdir, "wait.mp4")
-        if os.path.exists(w):
+        wsrc = blinks or ([w] if os.path.exists(w) else [])
+        if wsrc:
             o = os.path.join(od, "wait.mp4")
-            if stale(o, [w] + talks, force, H): jobs.append(("wait", ([w], talks), o))
+            if stale(o, wsrc + talks, force, H): jobs.append(("wait", (wsrc, talks), o))
         elif clips:
             print(f"  ⚠ {form}/{persona}: wait.mp4(다시듣기 대기 클립)가 없습니다")
 
@@ -159,7 +162,7 @@ def main():
             build_talk(ins[0], out, a.height); srcs = ins
         if kind in ("idle", "wait"):
             cm = color_match(ins[1], ins[0])
-            build_idle(ins[0], out, a.height, cm, cap=(kind == "idle"))
+            build_idle(ins[0], out, a.height, cm, cap=(kind == "idle" or "blink_" in os.path.basename(ins[0][0])))
             print("    색 보정 (R,G,B gain·offset):" if cm else "    색 보정 없음 (질문 영상이 아직 없음 — 들어오면 다시 만들어짐)", cm or "")
             srcs = ins[0] + ins[1]
         if kind == "still":
