@@ -52,6 +52,15 @@ def vopts(height):
 def build_talk(src, out, height):
     ff("-i", src, *vopts(height), "-c:a", "copy", "-movflags", "+faststart", out)
 
+def find_clip(pdir, kind, n):
+    """idle_2.mp4 뿐 아니라 idle_2(필기1회, 끄덕임2회).mp4 처럼 설명을 붙인 이름도 찾는다"""
+    exact = os.path.join(pdir, f"{kind}_{n}.mp4")
+    if os.path.exists(exact): return exact
+    hits = [f for f in glob.glob(os.path.join(pdir, f"{kind}_{n}*.mp4"))
+            if re.match(rf"{kind}_{n}(\D|$)", os.path.basename(f)[:-4])]
+    if len(hits) > 1: print(f"  ⚠ {kind}_{n} 에 해당하는 파일이 여러 개: {', '.join(map(os.path.basename, hits))} → 첫 번째 사용")
+    return sorted(hits)[0] if hits else None
+
 def rgb_stats(path, sseof=None):
     """첫 프레임(또는 끝에서 sseof 초) 의 채널별 평균·표준편차"""
     a = ["ffmpeg", "-v", "error"] + (["-sseof", str(sseof)] if sseof else []) + \
@@ -74,24 +83,25 @@ def color_match(talks, clips):
     return [(round(float(g[i]), 4), round(float(o[i]), 2)) for i in range(3)]
 
 def build_idle(clips, out, height, cm, cap=True):
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as t:
-        for c in clips: t.write("file '%s'\n" % c.replace("'", "'\\''"))
-        lst = t.name
-    vf = []
+    """클립들을 이어 붙인다. 클립마다 인코딩 설정이 다를 수 있어(제작 시기·도구가 다름)
+    concat 디먹서 대신 각각 디코딩한 뒤 concat 필터로 잇는다."""
+    post = []
     if cm:
-        vf.append("lutrgb=" + ":".join(f"{ch}='clip(val*{g}+{o},0,255)'" for ch, (g, o) in zip("rgb", cm)))
+        post.append("lutrgb=" + ":".join(f"{ch}='clip(val*{g}+{o},0,255)'" for ch, (g, o) in zip("rgb", cm)))
     if height:
         w = round(height * 16 / 9 / 2) * 2
-        vf.append(f"scale={w}:{height},setsar=1")
-    vf.append("format=yuv420p")
-    try:
-        ff("-f", "concat", "-safe", "0", "-i", lst, "-vf", ",".join(vf), "-r", str(IDLE_FPS),
-           "-c:v", "libx264", "-preset", "medium", "-crf", "18",
-           "-g", str(CLIP_FRAMES), "-keyint_min", str(CLIP_FRAMES), "-sc_threshold", "0",
-           *(["-frames:v", str(CLIP_FRAMES * len(clips))] if cap else []),
-           "-an", "-movflags", "+faststart", out)
-    finally:
-        os.unlink(lst)
+        post.append(f"scale={w}:{height},setsar=1")
+    post.append("format=yuv420p")
+    # 입력 규격 통일 (1916x1080 24fps 기준) 후 이어 붙임
+    pre = "".join(f"[{i}:v]scale=1916:1080,setsar=1,fps={IDLE_FPS},format=yuv420p[v{i}];" for i in range(len(clips)))
+    graph = pre + "".join(f"[v{i}]" for i in range(len(clips))) + f"concat=n={len(clips)}:v=1:a=0[c];[c]" + ",".join(post) + "[out]"
+    args = []
+    for c in clips: args += ["-i", c]
+    ff(*args, "-filter_complex", graph, "-map", "[out]", "-r", str(IDLE_FPS),
+       "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+       "-g", str(CLIP_FRAMES), "-keyint_min", str(CLIP_FRAMES), "-sc_threshold", "0",
+       *(["-frames:v", str(CLIP_FRAMES * len(clips))] if cap else []),
+       "-an", "-movflags", "+faststart", out)
 
 def bump_asset_version():
     v = time.strftime("%Y%m%d%H%M")
@@ -129,7 +139,7 @@ def main():
         # 이어 붙일 순서: order.txt (예: "1 3 2 4") 가 있으면 그 순서, 없으면 번호순
         of = os.path.join(pdir, "order.txt")
         order = [int(x) for x in open(of).read().split()] if os.path.exists(of) else [1, 2, 3, 4]
-        clips = [c for c in (os.path.join(pdir, f"idle_{i}.mp4") for i in order) if os.path.exists(c)]
+        clips = [c for c in (find_clip(pdir, "idle", i) for i in order) if c]
         if clips and len(clips) < 4:
             print(f"  ⚠ {form}/{persona}: 대기 클립 {len(clips)}/4 개로 idle.mp4 를 만듭니다 "
                   f"({', '.join(os.path.basename(c) for c in clips)})")
@@ -139,7 +149,7 @@ def main():
             j = os.path.join(IMG, f"{form}_{persona}.jpg")
             if stale(j, clips + talks, force, H): jobs.append(("still", [o], j, clips + talks))
         # 다시듣기·듣기 대기(눈 깜빡임) : blink_1, blink_2 … 를 이어 붙여 wait.mp4. 없으면 예전 wait.mp4 한 개
-        blinks = sorted(glob.glob(os.path.join(pdir, "blink_*.mp4")))
+        blinks = [c for c in (find_clip(pdir, "blink", i) for i in range(1, 10)) if c]
         w = os.path.join(pdir, "wait.mp4")
         wsrc = blinks or ([w] if os.path.exists(w) else [])
         if wsrc:
