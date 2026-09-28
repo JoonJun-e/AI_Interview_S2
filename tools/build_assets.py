@@ -8,7 +8,7 @@
 
 만드는 것 (form = human | avatar, persona = middle_man | young_woman | young_man)
   deploy/assets/video/<form>/<persona>/<key>.mp4   말하는 영상 (key = intro, 1-1 … 3-2)
-  deploy/assets/video/<form>/<persona>/idle.mp4    답변 대기 = 있는 idle_N 을 번호순으로 이어 붙임, 소리 제거
+  deploy/assets/video/<form>/<persona>/idle.mp4    답변 대기 = 있는 idle_N 을 번호순(또는 order.txt 순서)으로 이어 붙임, 소리 제거
   deploy/assets/video/<form>/<persona>/wait.mp4    다시듣기 대기 = wait.mp4 (눈 깜빡임 클립), 소리 제거
   deploy/assets/persona/<form>_<persona>.jpg       idle.mp4 첫 프레임 (블러 화면 · 사진 모드용)
 
@@ -126,7 +126,10 @@ def main():
                 o = os.path.join(od, k + ".mp4")
                 if stale(o, [s_], force, H): jobs.append(("talk", [s_], o))
         talks = [os.path.join(pdir, k + ".mp4") for k in KEYS if os.path.exists(os.path.join(pdir, k + ".mp4"))]
-        clips = [c for c in (os.path.join(pdir, f"idle_{i}.mp4") for i in (1, 2, 3, 4)) if os.path.exists(c)]
+        # 이어 붙일 순서: order.txt (예: "1 3 2 4") 가 있으면 그 순서, 없으면 번호순
+        of = os.path.join(pdir, "order.txt")
+        order = [int(x) for x in open(of).read().split()] if os.path.exists(of) else [1, 2, 3, 4]
+        clips = [c for c in (os.path.join(pdir, f"idle_{i}.mp4") for i in order) if os.path.exists(c)]
         if clips and len(clips) < 4:
             print(f"  ⚠ {form}/{persona}: 대기 클립 {len(clips)}/4 개로 idle.mp4 를 만듭니다 "
                   f"({', '.join(os.path.basename(c) for c in clips)})")

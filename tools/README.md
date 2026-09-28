@@ -35,6 +35,7 @@ python3 tools/build_assets.py --apply --only avatar/young_woman
 - 질문 영상 → `deploy/assets/video/<form>/<persona>/<key>.mp4`
 - 답변 대기 클립(있는 것만, 1~4개) → 질문 영상 색에 맞춰 보정 후 이어 붙여 `idle.mp4` (24fps, 클립 경계 키프레임, 소리 제거)
 - 다시듣기 대기 클립 → 같은 보정으로 `wait.mp4`
+- 이어 붙이는 순서를 바꾸려면 `_source/video/<form>/<persona>/order.txt` 에 `1 3 2 4` 처럼 적습니다.
   질문 영상이 아직 없으면 보정 없이 만들고, 질문 영상이 들어오면 다음 실행 때 자동으로 다시 만듭니다.
 - `idle.mp4` 첫 프레임 → `deploy/assets/persona/<form>_<persona>.jpg`
 - 새로 만든 게 있으면 `deploy/index.html` 의 `ASSET_VERSION` 을 갱신합니다 (브라우저 캐시 무효화).

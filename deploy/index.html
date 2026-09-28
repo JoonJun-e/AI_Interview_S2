@@ -263,7 +263,7 @@
   .notice p.tight{margin-bottom:6px}
   .notice b{font-weight:800}
   .notice .hl{color:#2f5fe0;font-weight:800}
-  .notice .lead{font-size:19px;font-weight:800;margin-bottom:16px}
+  .notice .lead{margin-bottom:16px}   /* 인사말도 본문과 같은 크기 · 굵기 (0928 수정) */
 
   /* 종료 화면 */
   .end-wrap{text-align:center;padding:40px 20px}
@@ -367,7 +367,7 @@
       <p><b>가능한 한 구체적인 사례와 세부적인 설명을 포함하여 성실하게 답변해주세요.</b></p>
 
       <p>면접 체험이 끝난 후에는 간단한 설문을 작성해주시면 됩니다.<br>
-         오늘 수집된 데이터는 반드시 연구 목적으로만 사용됩니다.<br>
+         <b>오늘 수집된 데이터는 반드시 연구 목적으로만 사용됩니다.</b><br>
          여러분의 성실한 참여가 향후 AI 면접 시스템을 개선하는 데 큰 도움이 될 것입니다!</p>
 
       <p>이제 준비가 되었다면 면접을 시작해 주세요.</p>
@@ -614,7 +614,7 @@ const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 /* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
    vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
    이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
-const ASSET_VERSION = "202609281449";
+const ASSET_VERSION = "202609280555";
 const av = u => `${u}?v=${ASSET_VERSION}`;
 
 const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
