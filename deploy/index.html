@@ -614,7 +614,7 @@ const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
 /* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
    vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
    이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
-const ASSET_VERSION = "202609280555";
+const ASSET_VERSION = "202609281551";
 const av = u => `${u}?v=${ASSET_VERSION}`;
 
 const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
@@ -636,7 +636,7 @@ const WAIT_VIDEO  = i => av(`${VIDEO_DIR(seatPersona(i))}/wait.mp4`);
 
 /* 면접관 영상 3종 — 모두 같은 기본 자세로 시작·끝나므로 서로 바로 이어 붙일 수 있다.
      talk : 질문 낭독
-     wait : 다시 듣기 선택 5초 동안 (눈 깜빡임만 있는 클립, loop)
+     wait : 다시 듣기 선택 5초 동안 (현재는 정지 화면. 눈 깜빡임 클립이 들어오면 교체)
             자세가 거의 변하지 않아서 언제 [다시 듣기]를 눌러도 질문 영상으로 튀지 않고 넘어간다.
      idle : 답변을 듣는 동안 (5초 클립 여러 개를 이어 붙인 loop, 필기·끄덕임)
    전환 : talk 끝 → wait(처음부터) → 답변 시작 → idle(무작위 클립 경계부터)
