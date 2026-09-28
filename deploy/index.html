@@ -186,7 +186,18 @@
   .voice-panel.solo{gap:0;background:radial-gradient(120% 120% at 50% 28%,
     #f8faff 0%,#eff2fa 58%,#e6eaf4 100%)}
   .vc.orb-mode{gap:22px;--orb:178px;--stage:240px}
+  /* Multi 오브 : 패널 크기에 맞춰 키운다 (0929 피드백 — 공간이 많이 남는다).
+     cq 단위 = 패널(컨테이너) 가로·세로의 1%. 세 개 + 간격이 가로 90% 안에 들어가도록 잡았다.
+     container query 를 모르는 브라우저는 예전 고정값(126px)으로 보인다. */
+  .voice-panel:not(.solo){container-type:size;gap:3vw}
   .voice-panel:not(.solo) .vc.orb-mode{--orb:126px;--stage:168px}
+  @supports (width:1cqw){
+    .voice-panel:not(.solo) .vc.orb-mode{--orb:min(21cqw,56cqh);--stage:calc(var(--orb) * 1.3)}
+  }
+  /* Multi : 말할 때 커지는 폭(16% → 28%)과 듣는 중 숨쉬기 폭을 키워 움직임이 분명히 보이게 */
+  .voice-panel:not(.solo) .orb{transform:scale(calc(1 + var(--amp) * .28))}
+  .voice-panel:not(.solo) .orb-stage{animation-name:orb-breathe-multi}
+  @keyframes orb-breathe-multi{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
   .vc.orb-mode .dot,.vc.orb-mode .vwave{display:none!important}
   .orb-stage{--amp:0;position:relative;width:var(--stage);height:var(--stage);
     display:flex;align-items:center;justify-content:center;
@@ -1172,7 +1183,8 @@ let orbIdleRAF=0, orbIdleT0=0;
    발화 중이 아닌 오브를 --amp 0 으로 죽여두면 "꺼진 것"처럼 보인다.
    사람 면접관이 듣고 있는 모습에 대응하도록, 느리고 작은 진폭으로 계속 숨쉬게 한다.
    발화자(0~1)와 확실히 구분되도록 폭을 0.04~0.16 으로 묶어 둔다. */
-const ORB_LISTEN_MIN = 0.04, ORB_LISTEN_MAX = 0.16;
+const ORB_LISTEN_MIN = 0.04, ORB_LISTEN_MAX = 0.16;          // Single (피드백 없음 — 그대로)
+const ORB_LISTEN_MULTI = [0.10, 0.34];                          // Multi (0929 피드백 — 움직임이 더 분명하게). 발화(0.6~1.0)와는 여전히 구분됨
 /* 면접관마다 "주기"와 "위상"을 모두 다르게 준다.
    위상만 어긋내면 주기가 같아 결국 같은 리듬으로 읽히므로,
    서로 정수비가 아닌 주파수를 써서 셋이 겹치는 순간이 사실상 오지 않게 한다.
@@ -1183,7 +1195,8 @@ const ORB_LISTEN = [
   { f1:0.67, f2:0.38, ph:4.1 },   // 면접관 3 · 분홍
 ];
 function orbListenLevel(t, i){
-  const mid=(ORB_LISTEN_MIN+ORB_LISTEN_MAX)/2, half=(ORB_LISTEN_MAX-ORB_LISTEN_MIN)/2;
+  const [lo,hi] = nAgents===3 ? ORB_LISTEN_MULTI : [ORB_LISTEN_MIN, ORB_LISTEN_MAX];
+  const mid=(lo+hi)/2, half=(hi-lo)/2;
   const c = ORB_LISTEN[i % ORB_LISTEN.length];
   return mid + half*(0.65*Math.sin(t*c.f1 + c.ph) + 0.35*Math.sin(t*c.f2 + c.ph*1.7));
 }
