@@ -189,14 +189,18 @@
   /* Multi 오브 : 패널 크기에 맞춰 키운다 (0929 피드백 — 공간이 많이 남는다).
      cq 단위 = 패널(컨테이너) 가로·세로의 1%. 세 개 + 간격이 가로 90% 안에 들어가도록 잡았다.
      container query 를 모르는 브라우저는 예전 고정값(126px)으로 보인다. */
-  .voice-panel:not(.solo){container-type:size;gap:3vw}
+  /* Single 도 같은 규칙 (0929 피드백 — 여전히 작다). 오브 1개의 크기를 Multi 오브 1개와 똑같이 맞춘다
+     → Single/Multi 사이에 오브 크기가 다른 자극 차이가 생기지 않는다. */
+  .voice-panel{container-type:size}
+  .voice-panel:not(.solo){gap:3vw}
   .voice-panel:not(.solo) .vc.orb-mode{--orb:126px;--stage:168px}
   @supports (width:1cqw){
+    .vc.orb-mode,
     .voice-panel:not(.solo) .vc.orb-mode{--orb:min(21cqw,56cqh);--stage:calc(var(--orb) * 1.3)}
   }
-  /* Multi : 말할 때 커지는 폭(16% → 28%)과 듣는 중 숨쉬기 폭을 키워 움직임이 분명히 보이게 */
-  .voice-panel:not(.solo) .orb{transform:scale(calc(1 + var(--amp) * .28))}
-  .voice-panel:not(.solo) .orb-stage{animation-name:orb-breathe-multi}
+  /* 말할 때 커지는 폭(16% → 28%)과 듣는 중 숨쉬기 폭을 키워 움직임이 분명히 보이게 (Single·Multi 공통) */
+  .vc.orb-mode .orb{transform:scale(calc(1 + var(--amp) * .28))}
+  .vc.orb-mode .orb-stage{animation-name:orb-breathe-multi}
   @keyframes orb-breathe-multi{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
   .vc.orb-mode .dot,.vc.orb-mode .vwave{display:none!important}
   .orb-stage{--amp:0;position:relative;width:var(--stage);height:var(--stage);
@@ -1206,7 +1210,7 @@ const ORB_LISTEN = [
   { f1:0.67, f2:0.38, ph:4.1 },   // 면접관 3 · 분홍
 ];
 function orbListenLevel(t, i){
-  const [lo,hi] = nAgents===3 ? ORB_LISTEN_MULTI : [ORB_LISTEN_MIN, ORB_LISTEN_MAX];
+  const [lo,hi] = ORB_LISTEN_MULTI;                 // Single·Multi 공통 (0929 — Single 도 Multi 와 같게)
   const mid=(lo+hi)/2, half=(hi-lo)/2;
   const c = ORB_LISTEN[i % ORB_LISTEN.length];
   return mid + half*(0.65*Math.sin(t*c.f1 + c.ph) + 0.35*Math.sin(t*c.f2 + c.ph*1.7));
