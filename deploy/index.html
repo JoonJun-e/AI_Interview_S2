@@ -740,8 +740,10 @@ const adminMode = new URLSearchParams(location.search).get("admin")==="1";
 
 /* 조건 자동 배정 : 접속 시 1회, 실패하면 재시도.
    같은 참가자가 새로고침하면 기존 조건을 그대로 받습니다. */
+/* 본실험용 키 : 테스트 때 저장된 P00xx 번호를 다시 쓰지 않도록 키를 바꿨습니다. */
+const PID_KEY = "ai_interview_pid_v2";
 async function autoAssign(attempt=1){
-  const saved   = STICKY_ASSIGNMENT ? (localStorage.getItem("ai_interview_pid") || "") : "";
+  const saved   = STICKY_ASSIGNMENT ? (localStorage.getItem(PID_KEY) || "") : "";
   const fromUrl = new URLSearchParams(location.search).get("participant_id") || "";
   $("pidShow").textContent = attempt===1 ? "배정 중…" : `연결 중… (${attempt}/3)`;
   try{
@@ -751,7 +753,7 @@ async function autoAssign(attempt=1){
     pid = res.participant_id; condCode = res.condition;
     nAgents = res.agents; form = res.form;
     if(res.persona) soloPersona = res.persona;
-    localStorage.setItem("ai_interview_pid", pid);
+    localStorage.setItem(PID_KEY, pid);
     $("pidShow").textContent = pid;
     $("btnLogin").disabled = false;
     addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
