@@ -292,6 +292,7 @@
 
   /* 종료 화면 */
   .end-wrap{text-align:center;padding:40px 20px}
+  .end-pid{font-size:16px;color:var(--sub);margin:-18px 0 26px;font-variant-numeric:tabular-nums}
   .end-title{font-size:38px;font-weight:800;line-height:1.5;color:#111a2e;
     letter-spacing:-.01em;margin-bottom:38px}
   .end-btn{font-size:22px;font-weight:800;padding:20px 54px;border-radius:12px;
@@ -530,6 +531,7 @@
 <div class="screen" id="scr-survey">
   <div class="end-wrap">
     <h1 class="end-title">수고하셨습니다.<br>AI 면접이 종료되었습니다.</h1>
+    <p class="end-pid" id="endPid"></p>
     <button class="btn end-btn" id="btnSurveyLink">설문하러 가기</button>
     <div class="exp-tools">
       <a href="#" id="expToggle">실험자용</a>
@@ -544,7 +546,16 @@
 
 <script>
 /* ══════════════ CONFIG ══════════════ */
-const SURVEY_URL = "";
+/* 종료 후 설문 (조건별)
+   Low  = 형태 없음(오브) · High = 아바타·사람. 면접관 수(Single/Multi)마다 설문이 다르다. */
+const SURVEY_URLS = {
+  single_low : "https://forms.gle/UC7HE4ptXbZ6Fri98",   // Single · 오브
+  single_high: "https://forms.gle/yKNuZhh9y8RTCF67A",   // Single · 아바타 / 사람
+  multi_low  : "https://forms.gle/qbTURrYPGT6fEcbJA",   // Multi  · 오브
+  multi_high : "https://forms.gle/N6RTkX7XKu4j5JH48",   // Multi  · 아바타 / 사람
+};
+const surveyKey = () => `${nAgents===1?"single":"multi"}_${form==="x"?"low":"high"}`;
+const surveyUrl = () => SURVEY_URLS[surveyKey()] || "";
 
 /* 백엔드 (Google Apps Script 웹앱 URL)
    비워두면 자동 배정·업로드 없이 실험자 수동 선택 모드로 동작합니다.
@@ -581,8 +592,8 @@ const QUESTIONS = [
 ];
 const REPLAY_WINDOW = 5;    // 문항 낭독 후 다시 듣기 선택 시간 (지나면 자동 녹음)
 const MIN_ANSWER    = 30;   // 이 시간이 지나야 [답변 완료] 버튼이 활성화됨
-const ENFORCE_MIN   = false; // 데모·테스트 중 잠금을 풀려면 false 로 바꾸세요 (운영 시 true 로 되돌릴 것)
-const STICKY_ASSIGNMENT = false; // true면 같은 브라우저(localStorage)가 항상 같은 조건으로 재배정됨. 테스트 중엔 false로 매번 새로 배정 (운영 시 true 로 되돌릴 것)
+const ENFORCE_MIN   = true;  // 운영: 30초 전 [답변 완료] 잠금. 데모·테스트 때만 false
+const STICKY_ASSIGNMENT = true; // 운영: 같은 브라우저는 같은 참가자·조건 유지 (새로고침해도 재배정 안 됨). 테스트 때만 false
 const START_COUNT   = 5;    // 면접 시작 전 카운트다운 (1회)
 const SAVE_SECONDS  = 2;    // 답변 저장 화면
 const MAX_PLAYS     = 2;    // 문항 최대 재생 횟수
@@ -603,7 +614,7 @@ let videoMode = false;           // 조건 배정 후 resolveVideoMode() 가 결
    assets/audio/notice/single.mp3 · multi.mp3
    재생이 끝나야 [환경 설정으로 이동] 버튼이 풀린다. */
 const NOTICE_AUDIO = () => av(`assets/audio/notice/${sufx()}.mp3`);
-const LOCK_UNTIL_NOTICE = true;  // 테스트 중 잠금을 풀려면 false (운영 시 true 로 되돌릴 것)
+const LOCK_UNTIL_NOTICE = true;  // 운영: 안내 음성이 끝나야 다음으로. 테스트 때만 false
 
 const sufx = () => nAgents===1 ? "single" : "multi";
 
@@ -1463,8 +1474,10 @@ function stopRecording(save){
 /* 녹음 업로드 : 백그라운드로 진행되며 실패해도 면접은 계속됩니다.
    (실패분은 종료 화면의 실험자용 메뉴에서 수동 저장 가능) */
 const upStatus={ ok:0, fail:0 };
+let upPending=0;                        // 아직 끝나지 않은 업로드 수 — 종료 화면에서 다 끝날 때까지 설문 버튼을 잠근다
 function uploadRecording(blob, filename, qkey){
   if(!backendOn()) return;
+  upPending++;
   const fr=new FileReader();
   fr.onload=()=>{
     const b64=String(fr.result).split(",")[1];
@@ -1473,7 +1486,8 @@ function uploadRecording(blob, filename, qkey){
                   question:qkey, filename, mime:blob.type||"audio/webm", data:b64 })
       .then(r=>{ r&&r.ok ? upStatus.ok++ : upStatus.fail++;
                  addLog("upload", `${filename}:${r&&r.ok?"ok":"fail"}`); })
-      .catch(()=>{ upStatus.fail++; addLog("upload", `${filename}:fail`); });
+      .catch(()=>{ upStatus.fail++; addLog("upload", `${filename}:fail`); })
+      .finally(()=>{ upPending--; });
   };
   fr.readAsDataURL(blob);
 }
@@ -1632,15 +1646,29 @@ function finishInterview(){
   tiles.forEach(el=>{ el.querySelectorAll(".v-idle,.v-wait").forEach(v=>v.pause()); });
   addLog("interview_end");
   renderDownloads();
+  if($("endPid") && pid) $("endPid").textContent = `참가자 번호 ${pid}`;
   show("scr-survey");
-  pushLogs();
+  prepareSurvey();
+}
+
+/* 마지막 답변 업로드가 끝나기 전에 참가자가 설문으로 넘어가 창을 닫으면 녹음이 유실된다.
+   업로드가 모두 끝날 때까지(최대 60초) 설문 버튼을 잠그고, 끝나면 로그를 보낸 뒤 연다. */
+async function prepareSurvey(){
+  const b=$("btnSurveyLink"), label=b.textContent, t0=Date.now();
+  b.disabled=true; b.textContent="답변 저장 중…";
+  while(upPending>0 && Date.now()-t0<60000) await new Promise(r=>setTimeout(r,300));
+  addLog("end_ready",`pending=${upPending};wait_ms=${Date.now()-t0};survey=${surveyKey()}`);
+  renderDownloads();
+  await pushLogs();
+  b.disabled=false; b.textContent=label;
 }
 
 /* ══════════════ 종료 화면 ══════════════ */
 if($("expToggle")) $("expToggle").onclick=e=>{ e.preventDefault(); $("expPanel").classList.toggle("on"); };
 $("btnSurveyLink").onclick=()=>{
   addLog("survey_opened");
-  if(SURVEY_URL){ window.open(SURVEY_URL,"_blank"); return; }
+  const url=surveyUrl();
+  if(url){ window.open(url,"_blank"); return; }
   $("btnSurveyLink").disabled=true;
   $("btnSurveyLink").textContent="실험자 안내를 기다려 주세요";
 };

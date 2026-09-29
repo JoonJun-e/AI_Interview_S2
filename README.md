@@ -61,19 +61,30 @@ AI_Interview_s2/
 
 `deploy/index.html` 의 `BACKEND_URL` 을 비우면 실험자 수동 선택 모드로 돌아갑니다. 자세한 내용은 `backend/README.md`.
 
-## 본실험 전 체크리스트 (`deploy/index.html` 상단 CONFIG)
+## 본실험 설정 (`deploy/index.html` 상단 CONFIG) — 2026-09-29 운영 모드로 전환
 
-| 항목 | 지금 (테스트) | 본실험 |
+| 항목 | 값 | 비고 |
 |---|---|---|
-| `ENFORCE_MIN` — 30초 전 [답변 완료] 잠금 | `false` | **`true`** |
-| `STICKY_ASSIGNMENT` — 같은 브라우저는 같은 조건 | `false` | **`true`** |
-| `LOCK_UNTIL_NOTICE` — 안내 음성이 끝나야 다음으로 | `true` | `true` |
-| `SURVEY_URL` — 종료 후 설문 주소 | 확인 | 확인 |
+| `ENFORCE_MIN` — 30초 전 [답변 완료] 잠금 | **`true`** | 데모·테스트 때만 `false` |
+| `STICKY_ASSIGNMENT` — 같은 브라우저는 같은 참가자·조건 | **`true`** | 테스트는 **시크릿 창**으로 (같은 창은 계속 같은 참가자) |
+| `LOCK_UNTIL_NOTICE` — 안내 음성이 끝나야 다음으로 | `true` | |
+| `SURVEY_URLS` — 종료 후 설문 (조건별 4개) | 연결됨 | 아래 표 |
 
-그리고 `python3 tools/check_assets.py` 결과에 **사진 모드 · 실행 불가가 0** 이어야 합니다.
-백엔드는 12개 버킷 모두에 배정하므로, 아바타 영상이 없는 상태로 참가자를 받으면 아바타 조건 참가자는 사진 모드를 보게 됩니다.
+| 조건 | 설문 |
+|---|---|
+| Single · 오브 (Low) | https://forms.gle/UC7HE4ptXbZ6Fri98 |
+| Single · 아바타 / 사람 (Medium·High) | https://forms.gle/yKNuZhh9y8RTCF67A |
+| Multi · 오브 (Low) | https://forms.gle/qbTURrYPGT6fEcbJA |
+| Multi · 아바타 / 사람 (Medium·High) | https://forms.gle/N6RTkX7XKu4j5JH48 |
 
-그 밖의 설정: `QUESTIONS`(문항·담당 면접관·제한시간), `REPLAY_WINDOW`(다시 듣기 선택 5초), `SAVE_SECONDS`, `USE_VIDEO`.
+종료 화면에는 **참가자 번호**가 표시되고, 마지막 녹음 업로드가 끝날 때까지(최대 60초) [설문하러 가기]가 잠깁니다.
+설문은 새 탭으로 열립니다. 설문에서 참가자 번호(또는 이름)를 받아야 면접 데이터와 연결할 수 있습니다.
+
+**참가자를 받기 직전에**: `python3 tools/check_assets.py` 가 사진 모드 · 실행 불가 0 인지 확인하고,
+스프레드시트 `assignments` 탭의 **테스트 행을 지우세요** — 배정은 기존 인원 수를 기준으로 균형을 맞추므로
+테스트 행이 남아 있으면 첫 참가자들이 한쪽 조건으로 몰립니다.
+
+그 밖의 설정: `QUESTIONS`(문항·담당 면접관·제한시간), `REPLAY_WINDOW`(다시 듣기 선택 5초), `ANSWER_STILL_SEC`(답변 시작 후 대기 영상 시작까지 4초), `SAVE_SECONDS`, `USE_VIDEO`.
 
 ## Vercel 배포
 
