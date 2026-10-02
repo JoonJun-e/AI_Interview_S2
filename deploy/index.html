@@ -471,21 +471,21 @@
   <stop offset="58%" stop-color="#f6f8ff"/> <stop offset="72%" stop-color="#e4ebfc"/>
   <stop offset="84%" stop-color="#b9c8f7"/> <stop offset="100%" stop-color="#9db0f1"/>
  </linearGradient>
-  <!-- 면접관 1 · 싱글 -->
+  <!-- 중년 남성(면접관 1) : 파랑 -->
  <linearGradient id="orbGradB" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
   <stop offset="0%" stop-color="#12a150"/>  <stop offset="16%" stop-color="#2fb763"/>
   <stop offset="30%" stop-color="#86dba6"/> <stop offset="44%" stop-color="#e7fbef"/>
   <stop offset="58%" stop-color="#f5fff9"/> <stop offset="72%" stop-color="#ddf6e7"/>
   <stop offset="84%" stop-color="#aee5c3"/> <stop offset="100%" stop-color="#92d9ad"/>
  </linearGradient>
-  <!-- 면접관 2 -->
+  <!-- 젊은 여성(면접관 2) : 초록 -->
  <linearGradient id="orbGradC" gradientUnits="userSpaceOnUse" x1="88" y1="0" x2="112" y2="200">
   <stop offset="0%" stop-color="#e0396b"/>  <stop offset="16%" stop-color="#ea5a82"/>
   <stop offset="30%" stop-color="#f79cb6"/> <stop offset="44%" stop-color="#fde9ef"/>
   <stop offset="58%" stop-color="#fff5f8"/> <stop offset="72%" stop-color="#fce1e9"/>
   <stop offset="84%" stop-color="#f7bccd"/> <stop offset="100%" stop-color="#f1a8be"/>
  </linearGradient>
-  <!-- 면접관 3 -->
+  <!-- 젊은 남성(면접관 3) : 분홍 -->
  <filter id="orbTurbA" filterUnits="userSpaceOnUse" x="-120" y="-120" width="440" height="440">
   <feTurbulence type="fractalNoise" baseFrequency="0.016 0.023" numOctaves="3" seed="29" result="n"/>
   <feDisplacementMap in="SourceGraphic" in2="n" scale="62" xChannelSelector="R" yChannelSelector="G"/></filter>
@@ -656,11 +656,12 @@ const PERSONAS         = ["middle_man","young_woman","young_man"];
 const PERSONA_OF_AGENT = { 1:"middle_man", 2:"young_woman", 3:"young_man" };
 const PERSONA_LABEL    = { middle_man:"중년 남성", young_woman:"젊은 여성", young_man:"젊은 남성" };
 const personaOf = q => nAgents===3 ? PERSONA_OF_AGENT[q.agent] : soloPersona;
+const ORB_HUE          = { middle_man:"A", young_woman:"B", young_man:"C" };   // 오브 색 (orbGradA·B·C)
 
 /* 자산 버전 — tools/build_assets.py 가 새로 만들 때마다 자동으로 바꾼다.
    vercel.json 이 assets/ 를 1년 immutable 로 캐시하므로, 같은 경로의 파일을 교체하면
    이미 한 번 받은 브라우저는 옛 파일을 계속 쓴다. 주소 뒤에 ?v= 를 붙여 새 파일로 인식시킨다. */
-const ASSET_VERSION = "202609290503";
+const ASSET_VERSION = "202610020645";
 const av = u => `${u}?v=${ASSET_VERSION}`;
 
 const IMG_PERSONA = p => av(`assets/persona/${form}_${p}.jpg`);
@@ -1072,7 +1073,9 @@ function buildRoom(){
       const label = n===3 ? `면접관 ${i+1}` : "면접관";
       const el=document.createElement("div");
       el.className="vc orb-mode"; el.dataset.a=i;
-      const hue = ["A","B","C"][i];          // 면접관별 색 (파랑·초록·분홍)
+      /* 색은 자리 번호가 아니라 페르소나에 붙는다 (중년 남성=파랑 · 젊은 여성=초록 · 젊은 남성=분홍).
+         싱글도 배정된 페르소나의 색을 써서, 같은 목소리는 싱글·멀티에서 같은 색 오브로 나온다. */
+      const hue = ORB_HUE[seatPersona(i)] || "A";
       el.innerHTML=`<div class="orb-stage" style="animation-delay:${-i*2.3}s">
           <div class="orb"><svg viewBox="0 0 200 200" preserveAspectRatio="xMidYMid slice">
             <g filter="url(#orbTurbA)"><g class="ampshift">
