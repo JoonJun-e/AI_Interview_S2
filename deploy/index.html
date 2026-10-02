@@ -28,6 +28,9 @@
   input[type=text]{width:100%;padding:12px;border:1px solid var(--line);
     border-radius:9px;font-size:15px}
   input[type=text]:focus{outline:none;border-color:var(--accent)}
+  input[type=text].bad{border-color:#b91c1c}
+  .field-err{display:none;margin:6px 0 0;font-size:12.5px;color:#b91c1c}
+  .field-err.on{display:block}
   .opt-group{display:flex;gap:8px}
   .opt-group button{flex:1;padding:12px 6px;border:1.5px solid var(--line);background:#fff;
     border-radius:10px;cursor:pointer;font-size:13.5px;transition:all .15s}
@@ -323,7 +326,8 @@
     <h1>AI 면접 시스템</h1>
     <p class="sub">면접에 참여하시려면 성명을 입력해 주세요.</p>
     <label>성명</label>
-    <input type="text" id="pname" placeholder="예: 홍길동" autocomplete="off">
+    <input type="text" id="pname" placeholder="예: 홍길동" autocomplete="off" maxlength="30">
+    <p class="field-err" id="nameErr">성명을 입력해야 면접을 시작할 수 있습니다.</p>
     <div id="pidBox" class="pid-box">참가자 번호 <b id="pidShow">배정 중…</b></div>
 
     <!-- 실험자 설정 : 자동 배정이 켜져 있으면 숨겨집니다 -->
@@ -756,7 +760,7 @@ async function autoAssign(attempt=1){
     if(res.persona) soloPersona = res.persona;
     localStorage.setItem(PID_KEY, pid);
     $("pidShow").textContent = pid;
-    $("btnLogin").disabled = false;
+    syncLoginBtn();
     addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
     return true;
   }catch(e){
@@ -794,6 +798,27 @@ document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
   b.classList.add("sel"); form=b.dataset.v;
 });
 
+/* 성명은 필수 — 비어 있으면 시작 버튼이 눌리지 않는다.
+   (이전에는 비워 두면 "지원자"로 대체되어 그대로 진행됐다)
+   2자 이상이고, 'ㅇㅇ'처럼 낱자(자음·모음)만 친 입력은 받지 않는다. */
+const nameValue = () => $("pname").value.trim().replace(/\s+/g," ");
+const nameOk    = () => { const v=nameValue(); return v.length>=2 && !/[\u3131-\u318E]/.test(v); };
+function syncLoginBtn(){
+  const assigned = !backendOn() || adminMode || !!condCode;   // 참가자 모드는 배정이 끝나야 한다
+  $("btnLogin").disabled = !(nameOk() && assigned);
+}
+function showNameErr(on){
+  $("nameErr").classList.toggle("on", on);
+  $("pname").classList.toggle("bad", on);
+}
+$("pname").addEventListener("input", ()=>{ syncLoginBtn(); if(nameOk()) showNameErr(false); });
+$("pname").addEventListener("blur",  ()=> showNameErr(!nameOk()));
+$("pname").addEventListener("keydown", e=>{
+  if(e.key!=="Enter" || e.isComposing) return;
+  if(!nameOk()){ showNameErr(true); return; }
+  if(!$("btnLogin").disabled) $("btnLogin").click();
+});
+
 /* 시작 화면 초기화
    · 운영(백엔드 연결) : 조건 선택 UI 를 완전히 제거하고 자동 배정
    · ?admin=1 또는 백엔드 미설정 : 실험자 수동 선택 모드 */
@@ -810,15 +835,16 @@ document.querySelectorAll("#grpForm button").forEach(b=>b.onclick=()=>{
     $("manualBox").remove();
     const et=document.querySelector(".exp-tools"); if(et) et.remove();
     $("pidBox").style.display="block";
-    $("btnLogin").disabled=true;
     autoAssign();
   }
+  syncLoginBtn();
 })();
 
 $("btnLogin").onclick=()=>{
   if(!backendOn() || adminMode) pid=($("pid")&&$("pid").value.trim())||pid||"P00";
   if(backendOn() && !adminMode && !condCode) return;   // 배정 전에는 진행 불가
-  pname=$("pname").value.trim()||"지원자";
+  if(!nameOk()){ showNameErr(true); $("pname").focus(); return; }   // 성명 없이는 진행 불가
+  pname=nameValue();
   if(backendOn() && pid) callBackend({ action:"name", participant_id:pid, name:pname }).catch(()=>{});
   addLog("login",`agents=${nAgents};form=${form};cond=${condCode};persona=${nAgents===1?soloPersona:"-"}`);
   $("ntProcess").innerHTML = COPY[sufx()].process;
