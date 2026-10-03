@@ -151,7 +151,8 @@ function setName(body) {
       if (rows[i][1] === body.participant_id) {
         const name = raw ? uniqueName(rows, i, raw) : '';
         sh.getRange(i + 1, 3).setValue(name);
-        sh.getRange(i + 1, 10).setValue(phone4);
+        // 텍스트 서식으로 써야 '0123' 의 앞자리 0 이 사라지지 않는다 (숫자로 저장되면 123 이 된다)
+        sh.getRange(i + 1, 10).setNumberFormat('@').setValue(phone4);
         return { ok:true, name:name, phone4:phone4 };
       }
     }
