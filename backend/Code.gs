@@ -96,8 +96,9 @@ function assign(body) {
 
     const pid = body.participant_id || nextPid(rows);
     // 이름은 아직 모르므로 빈 칸으로 두고, 로그인 시 setName() 이 채웁니다.
+    // 이름·뒷4자리는 로그인 때 setName() 이 채웁니다.
     sh.appendRow([new Date(), pid, '', picked.code, picked.agents, picked.form,
-                  picked.persona || '', body.ua || '', min + 1]);
+                  picked.persona || '', body.ua || '', min + 1, '']);
 
     return { ok:true, participant_id:pid, condition:picked.code,
              agents:picked.agents, form:picked.form,
@@ -108,17 +109,50 @@ function assign(body) {
   }
 }
 
-/* 로그인 시 이름을 확정 지으면, 배정 시트의 해당 참가자 행에 이름을 채웁니다. */
+/* 로그인 시 이름과 휴대전화 뒷 4자리를 배정 시트의 해당 참가자 행에 채웁니다.
+   같은 이름이 이미 있으면 뒤에 알파벳을 붙여 시트에서 구분합니다.
+     홍길동 → (두 번째) 홍길동B → (세 번째) 홍길동C …
+   먼저 들어온 사람의 이름은 그대로 두므로, 이미 내보낸 자료와 어긋나지 않습니다. */
+function uniqueName(rows, selfRow, raw) {
+  const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re  = new RegExp('^' + esc + '([A-Z])?$');
+
+  // 이 행에 이미 확정된 이름이 있으면 그대로 둔다.
+  // (재접속할 때마다 새로 계산하면 다른 사람과 같은 글자를 받을 수 있다)
+  const cur = String(rows[selfRow][2] || '').trim();
+  if (cur && re.test(cur)) return cur;
+
+  let n = 0;
+  for (let i = 1; i < rows.length; i++) {
+    if (i === selfRow) continue;
+    if (re.test(String(rows[i][2] || '').trim())) n++;
+  }
+  if (n === 0) return raw;
+  return n <= 25 ? raw + String.fromCharCode(65 + n)   // B, C, … Z
+                 : raw + (n + 1);                      // 26명을 넘기면 숫자로
+}
+
 function setName(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sh = sheet('assignments');
     const rows = sh.getDataRange().getValues();
+
+    // 예전에 만들어진 시트에는 '뒷4자리' 칸이 없으므로 한 번만 채워 넣는다
+    if (!String(rows[0] && rows[0][9] || '').trim()) {
+      sh.getRange(1, 10).setValue('뒷4자리');
+    }
+
+    const raw    = String(body.name || '').trim().replace(/\s+/g, ' ');
+    const phone4 = String(body.phone4 || '').replace(/\D/g, '').slice(0, 4);
+
     for (let i = 1; i < rows.length; i++) {
       if (rows[i][1] === body.participant_id) {
-        sh.getRange(i + 1, 3).setValue(body.name || '');
-        return { ok:true };
+        const name = raw ? uniqueName(rows, i, raw) : '';
+        sh.getRange(i + 1, 3).setValue(name);
+        sh.getRange(i + 1, 10).setValue(phone4);
+        return { ok:true, name:name, phone4:phone4 };
       }
     }
     return { ok:false, error:'participant not found' };
@@ -172,7 +206,7 @@ function sheet(name) {
   if (!sh) {
     sh = ss.insertSheet(name);
     const head = {
-      assignments: ['시각','참가자','이름','조건','면접관수','형태','페르소나','브라우저','배정순번'],
+      assignments: ['시각','참가자','이름','조건','면접관수','형태','페르소나','브라우저','배정순번','뒷4자리'],
       uploads:     ['시각','참가자','이름','조건','페르소나','문항','파일명','크기'],
       logs:        ['시각','참가자','이름','조건','문항','이벤트','비고']
     }[name];
