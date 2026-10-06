@@ -193,16 +193,28 @@ function upload(body) {
 
 /* ══════════ 3. 진행 로그 ══════════
    한 세션에 90~110 줄이 들어옵니다. appendRow 는 한 줄마다 시트를 왕복하므로
-   그만큼이면 1분을 넘깁니다. 범위를 잡아 setValues 로 한 번에 씁니다. */
+   그만큼이면 1분을 넘깁니다. 범위를 잡아 setValues 로 한 번에 씁니다.
+   appendRow 와 달리 "마지막 줄 읽기 → 쓰기"가 한 동작이 아니므로 락이 필요합니다.
+   락이 없으면 두 참가자가 동시에 끝날 때 같은 줄에 써서 한쪽 로그가 덮어써집니다. */
 function saveLog(body) {
   const rows = body.rows || [];
   if (!rows.length) return { ok:true, saved:0 };
-  const sh = sheet('logs');
   const cell = v => (v === undefined || v === null) ? '' : v;
   const values = rows.map(r =>
     [cell(r.t), cell(r.pid), cell(r.name), cell(r.cond), cell(r.q), cell(r.event), cell(r.extra)]);
-  sh.getRange(sh.getLastRow() + 1, 1, values.length, values[0].length).setValues(values);
-  return { ok:true, saved:values.length };
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = sheet('logs');
+    const start = sh.getLastRow() + 1;
+    const short = start + values.length - 1 - sh.getMaxRows();
+    if (short > 0) sh.insertRowsAfter(sh.getMaxRows(), short);   // 시트 끝을 넘으면 줄을 먼저 늘린다
+    sh.getRange(start, 1, values.length, values[0].length).setValues(values);
+    return { ok:true, saved:values.length };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /* ══════════ 유틸 ══════════ */

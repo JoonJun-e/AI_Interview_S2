@@ -9,7 +9,7 @@
 - 답변 녹음은 문항이 끝날 때마다 **구글 드라이브에 자동 업로드**
 - 배정·업로드·진행 로그가 **구글 스프레드시트**에 쌓임
 
-> **현재 상태 (2026-10-03): 연결 확인됨.** Apps Script 프로젝트 `Condition assign` 의 웹앱 배포(버전 5)를
+> **현재 상태 (2026-10-06): 연결 확인됨.** Apps Script 프로젝트 `Condition assign` 의 웹앱 배포(버전 6)를
 > `deploy/index.html` 의 `BACKEND_URL` 이 가리키고 있습니다. 실행 계정은 소유자, 액세스 권한은 **모든 사용자**.
 > `GET /exec` 이 `{"ok":true,"message":"AI Interview S2 backend"}` 를 반환하는지로 살아 있는지 확인할 수 있습니다.
 >
