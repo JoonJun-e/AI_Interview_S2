@@ -1520,11 +1520,19 @@ function speakQuestion(q,onEnd){
 }
 
 /* ══════════════ 녹음 ══════════════ */
+/* 답변은 말한 내용 분석에만 쓰므로 음성에 충분한 32kbps 로 낮춘다.
+   브라우저 기본값(약 128kbps)이면 1분 답변이 1.3MB 가 되고, 실제로 재 보니
+   업로드 중앙값이 23초였다. 32kbps 면 320KB · 8.5초로 떨어진다.
+   ※ 나중에 음높이·말속도 같은 음향 분석을 하게 되면 이 값을 지워 기본값으로 되돌릴 것. */
+const AUDIO_BPS = 32000;
+
 function startRecording(){
   if(!micStream) return;
   try{
     chunks=[];
-    recorder=new MediaRecorder(micStream);
+    /* 옵션을 받지 않는 브라우저에서는 기본값으로라도 녹음한다 — 녹음을 통째로 놓치면 안 된다 */
+    try{ recorder=new MediaRecorder(micStream,{ audioBitsPerSecond: AUDIO_BPS }); }
+    catch(err){ recorder=new MediaRecorder(micStream); addLog("recorder_default_bitrate", String(err)); }
     recorder.ondataavailable=e=>{ if(e.data.size>0) chunks.push(e.data); };
     recorder.start();
     $("selfcam").classList.add("recording");
