@@ -314,12 +314,17 @@
   .confirm-mask{position:fixed;inset:0;z-index:60;display:none;
     align-items:center;justify-content:center;background:rgba(17,26,46,.55);padding:20px}
   .confirm-mask.on{display:flex}
-  .confirm-box{background:#fff;border-radius:14px;padding:28px 30px;max-width:460px;
+  /* min-width:0 이 없으면 플렉스 항목이 내용보다 작게 줄지 못해 좁은 화면에서 상자가 잘린다 */
+  .confirm-box{background:#fff;border-radius:14px;padding:26px 26px 22px;
+    width:100%;max-width:440px;min-width:0;overflow-wrap:break-word;
     box-shadow:0 18px 50px rgba(0,0,0,.25);text-align:left}
-  .confirm-title{font-size:19px;font-weight:800;color:#a42020;margin:0 0 12px}
-  .confirm-body{font-size:15px;line-height:1.7;color:#1f2430;margin:0 0 22px;word-break:keep-all}
-  .confirm-btns{display:flex;gap:10px;flex-wrap:wrap}
-  .confirm-btns .btn{flex:1;min-width:150px;font-size:15px;padding:13px 16px}
+  .confirm-title{font-size:18px;font-weight:800;line-height:1.45;color:#a42020;
+    margin:0 0 12px;word-break:keep-all}
+  .confirm-body{font-size:15px;line-height:1.72;color:#1f2430;margin:0 0 20px;word-break:keep-all}
+  /* 버튼 글자가 길어 가로로 나란히 두면 잘린다 — 세로로 쌓고 줄바꿈을 허용한다 */
+  .confirm-btns{display:flex;flex-direction:column;gap:9px}
+  .confirm-btns .btn{width:100%;font-size:15px;line-height:1.45;padding:14px 18px;
+    white-space:normal;word-break:keep-all}
   .exp-tools{margin-top:64px}
   .exp-tools a{font-size:11.5px;color:#c8cdd8;text-decoration:none}
   .exp-tools a:hover{color:var(--sub)}
@@ -570,8 +575,8 @@
           저장이 끝날 때까지 <b>이 창을 닫지 말아 주세요.</b><br>
           지금 닫으면 마지막 답변이 저장되지 않습니다.</p>
         <div class="confirm-btns">
-          <button class="btn ghost" id="cfWait">저장될 때까지 기다리기</button>
-          <button class="btn" id="cfGo">창을 열어둔 채 설문 시작</button>
+          <button class="btn" id="cfWait">저장이 끝날 때까지 기다리기</button>
+          <button class="btn ghost" id="cfGo">이 창을 열어둔 채 설문 시작하기</button>
         </div>
       </div>
     </div>
