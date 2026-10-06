@@ -310,6 +310,16 @@
     border-radius:10px;background:#fff7e6;border:1px solid #f3dca6;color:#8a5a00;
     font-size:14px;line-height:1.55;word-break:keep-all}
   .end-saving.on{display:block}
+  /* 저장 중에 설문으로 넘어가려 할 때 뜨는 확인 창 (1차 경고) */
+  .confirm-mask{position:fixed;inset:0;z-index:60;display:none;
+    align-items:center;justify-content:center;background:rgba(17,26,46,.55);padding:20px}
+  .confirm-mask.on{display:flex}
+  .confirm-box{background:#fff;border-radius:14px;padding:28px 30px;max-width:460px;
+    box-shadow:0 18px 50px rgba(0,0,0,.25);text-align:left}
+  .confirm-title{font-size:19px;font-weight:800;color:#a42020;margin:0 0 12px}
+  .confirm-body{font-size:15px;line-height:1.7;color:#1f2430;margin:0 0 22px;word-break:keep-all}
+  .confirm-btns{display:flex;gap:10px;flex-wrap:wrap}
+  .confirm-btns .btn{flex:1;min-width:150px;font-size:15px;padding:13px 16px}
   .exp-tools{margin-top:64px}
   .exp-tools a{font-size:11.5px;color:#c8cdd8;text-decoration:none}
   .exp-tools a:hover{color:var(--sub)}
@@ -552,6 +562,19 @@
     <button class="btn end-btn" id="btnSurveyLink">설문하러 가기</button>
     <p class="end-saving" id="endSaving">답변을 저장하고 있습니다. 설문은 새 창에서 열리니,
       <b>저장이 끝날 때까지 이 창을 닫지 말아 주세요.</b></p>
+
+    <div class="confirm-mask" id="saveConfirm">
+      <div class="confirm-box">
+        <p class="confirm-title">아직 답변을 저장하고 있습니다</p>
+        <p class="confirm-body">설문은 <b>새 창</b>에서 열립니다.<br>
+          저장이 끝날 때까지 <b>이 창을 닫지 말아 주세요.</b><br>
+          지금 닫으면 마지막 답변이 저장되지 않습니다.</p>
+        <div class="confirm-btns">
+          <button class="btn ghost" id="cfWait">저장될 때까지 기다리기</button>
+          <button class="btn" id="cfGo">창을 열어둔 채 설문 시작</button>
+        </div>
+      </div>
+    </div>
     <div class="exp-tools">
       <a href="#" id="expToggle">실험자용</a>
       <div class="exp-panel" id="expPanel">
@@ -1750,7 +1773,7 @@ function finishInterview(){
    잠겨 있으면 참가자가 설문 자체를 못 하므로, 이때만 버튼을 열고 "창을 닫지 말라"는
    안내를 띄운 채 뒤에서 계속 올린다. 설문은 새 창(_blank)으로 열리므로
    이 창이 살아 있는 한 업로드는 이어진다. */
-const SURVEY_WAIT_MS = 120000;
+const SURVEY_WAIT_MS = 5000;
 
 async function prepareSurvey(){
   const b=$("btnSurveyLink"), label=b.textContent, t0=Date.now();
@@ -1773,12 +1796,33 @@ async function prepareSurvey(){
 
 /* ══════════════ 종료 화면 ══════════════ */
 if($("expToggle")) $("expToggle").onclick=e=>{ e.preventDefault(); $("expPanel").classList.toggle("on"); };
-$("btnSurveyLink").onclick=()=>{
+function openSurvey(){
   addLog("survey_opened");
   const url=surveyUrl();
   if(url){ window.open(url,"_blank"); return; }
   $("btnSurveyLink").disabled=true;
   $("btnSurveyLink").textContent="실험자 안내를 기다려 주세요";
+}
+
+/* 저장이 끝나기 전에 설문으로 넘어가려 하면 먼저 확인 창을 띄운다 (경고 1/2).
+   창을 실제로 닫으려 할 때는 beforeunload 가 브라우저 기본 확인 창을 띄운다 (경고 2/2).
+   브라우저는 창을 닫는 순간 기본 확인 창을 한 번만 보여줄 수 있으므로,
+   두 번째 방어선은 '닫기' 가 아니라 '설문으로 넘어가기' 시점에 둔다. */
+let surveyConfirmed=false;
+$("btnSurveyLink").onclick=()=>{
+  if(upPending>0 && !surveyConfirmed){
+    addLog("survey_blocked",`pending=${upPending}`);
+    $("saveConfirm").classList.add("on");
+    return;
+  }
+  openSurvey();
+};
+$("cfWait").onclick=()=>{ $("saveConfirm").classList.remove("on"); addLog("survey_wait_chosen"); };
+$("cfGo").onclick=()=>{
+  surveyConfirmed=true;
+  $("saveConfirm").classList.remove("on");
+  addLog("survey_forced",`pending=${upPending}`);
+  openSurvey();
 };
 function renderDownloads(){
   if(!$("dlList")) return;            // 참가자 모드에서는 패널 자체가 없음
@@ -1803,8 +1847,12 @@ if($("btnCsv")) $("btnCsv").onclick=()=>{
   a.download=`interview_log_${pid}_${condName()}.csv`;
   a.click();
 };
+/* 면접 중이거나 아직 올라가는 녹음이 남아 있으면 창을 닫을 때 브라우저가 확인 창을 띄운다.
+   문구는 브라우저가 정하며 바꿀 수 없다. */
 window.addEventListener("beforeunload",e=>{
-  if($("scr-interview").classList.contains("active")){ e.preventDefault(); e.returnValue=""; }
+  if($("scr-interview").classList.contains("active") || upPending>0){
+    e.preventDefault(); e.returnValue="";
+  }
 });
 </script>
 </body>
