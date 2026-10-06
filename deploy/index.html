@@ -1742,7 +1742,7 @@ function finishInterview(){
    잠겨 있으면 참가자가 설문 자체를 못 하므로, 이때만 버튼을 열고 "창을 닫지 말라"는
    안내를 띄운 채 뒤에서 계속 올린다. 설문은 새 창(_blank)으로 열리므로
    이 창이 살아 있는 한 업로드는 이어진다. */
-const SURVEY_WAIT_MS = 30000;
+const SURVEY_WAIT_MS = 120000;
 
 async function prepareSurvey(){
   const b=$("btnSurveyLink"), label=b.textContent, t0=Date.now();
