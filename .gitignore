@@ -10,6 +10,8 @@
 !/_source/**/order.txt
 # 빌드 설정 기록 (로컬용)
 deploy/assets/video/.build.json
+# 연구 설계 문서 — 실험 조작 내용이 들어 있어 저장소에 올리지 않는다
+/AboutStudy/
 
 # 시스템 · 파이썬 캐시
 .DS_Store
