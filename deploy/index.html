@@ -352,7 +352,7 @@
     <input type="text" id="pphone" placeholder="예: 1234" autocomplete="off"
            maxlength="4" inputmode="numeric" pattern="[0-9]*">
     <p class="field-err" id="phoneErr">휴대전화 뒷 4자리를 숫자로 입력해 주세요.</p>
-    <div id="pidBox" class="pid-box">참가자 번호 <b id="pidShow">배정 중…</b></div>
+    <div id="pidBox" class="pid-box">참가자 번호 <b id="pidShow">로그인하면 배정됩니다</b></div>
 
     <!-- 실험자 설정 : 자동 배정이 켜져 있으면 숨겨집니다 -->
     <div id="manualBox">
@@ -799,7 +799,6 @@ async function autoAssign(attempt=1){
     if(res.persona) soloPersona = res.persona;
     localStorage.setItem(PID_KEY, pid);
     $("pidShow").textContent = pid;
-    syncLoginBtn();
     addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
     return true;
   }catch(e){
@@ -813,7 +812,7 @@ async function autoAssign(attempt=1){
     return false;
   }
 }
-$("btnRetry").onclick=()=>{ show("scr-login"); autoAssign(); };
+$("btnRetry").onclick=()=>{ show("scr-login"); syncLoginBtn(); };   // 배정은 로그인 버튼에서 다시 시도한다
 
 /* ══════════════ 로그인 ══════════════ */
 document.querySelectorAll("#grpCount button").forEach(b=>b.onclick=()=>{
@@ -849,9 +848,9 @@ const phoneValue = () => $("pphone").value
   .replace(/[\uFF10-\uFF19]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
   .replace(/\D/g,"").slice(0,4);
 const phoneOk    = () => phoneValue().length===4;
+/* 배정은 버튼을 누른 뒤에 일어나므로, 잠금은 입력값만 본다 */
 function syncLoginBtn(){
-  const assigned = !backendOn() || adminMode || !!condCode;   // 참가자 모드는 배정이 끝나야 한다
-  $("btnLogin").disabled = !(nameOk() && phoneOk() && assigned);
+  $("btnLogin").disabled = !(nameOk() && phoneOk());
 }
 function showFieldErr(input, err, on){
   $(err).classList.toggle("on", on);
@@ -897,17 +896,31 @@ $("pphone").addEventListener("keydown", loginEnter);
     $("manualBox").remove();
     const et=document.querySelector(".exp-tools"); if(et) et.remove();
     $("pidBox").style.display="block";
-    autoAssign();
+    /* 배정은 로그인 버튼을 누를 때 한다 (아래 btnLogin.onclick).
+       페이지를 여는 것만으로 배정하면 링크 미리보기·크롤러가 주소를 열어본 것까지
+       버킷 인원으로 잡혀 균등 배정이 틀어진다. */
   }
   syncLoginBtn();
 })();
 
-$("btnLogin").onclick=()=>{
+let assigning=false;
+$("btnLogin").onclick=async()=>{
+  if(assigning) return;                                                // 연타 방지
   if(!backendOn() || adminMode) pid=($("pid")&&$("pid").value.trim())||pid||"P00";
-  if(backendOn() && !adminMode && !condCode) return;   // 배정 전에는 진행 불가
   if(!nameOk()){  showNameErr(true);  $("pname").focus();  return; }   // 성명 없이는 진행 불가
   if(!phoneOk()){ showPhoneErr(true); $("pphone").focus(); return; }   // 뒷 4자리도 필수
   pname=nameValue();
+
+  /* 조건 배정을 여기서 한다. 페이지를 여는 것만으로 배정하면 링크 미리보기나
+     크롤러가 주소를 열어본 것까지 버킷 인원에 잡혀 균등 배정이 틀어진다.
+     실패하면 autoAssign 이 오류 화면을 띄우므로 여기서는 돌아가기만 한다. */
+  if(backendOn() && !adminMode && !condCode){
+    const b=$("btnLogin"), label=b.textContent;
+    assigning=true; b.disabled=true; b.textContent="조건을 배정하는 중…";
+    const ok=await autoAssign();
+    assigning=false; b.textContent=label; syncLoginBtn();
+    if(!ok) return;
+  }
   /* 시트에 같은 이름이 이미 있으면 백엔드가 알파벳을 붙여 돌려준다 (홍길동 → 홍길동B).
      녹음·로그에도 같은 이름이 찍히도록 돌아온 이름으로 바꿔 둔다. */
   if(backendOn() && pid) callBackend({ action:"name", participant_id:pid,
