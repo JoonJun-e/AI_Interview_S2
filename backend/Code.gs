@@ -56,25 +56,60 @@ function doGet() {
 
 /* ══════════ 1. 조건 배정 ══════════
    동시 접속에도 인원이 어긋나지 않도록 락을 걸고 처리합니다.
-   같은 participant_id 로 다시 오면 기존 조건을 그대로 돌려줍니다. */
+
+   같은 사람은 몇 번을 다시 들어와도 처음 받은 번호·조건을 그대로 받습니다.
+   같은 사람인지는 "이름 + 휴대전화 뒷 4자리"로 판단합니다 (로그인 때 함께 보냄).
+   브라우저가 기억하는 번호만으로는 부족합니다 — 다른 브라우저·시크릿 창·다른 기기로
+   다시 들어오면 번호가 없어서 새 조건을 받고 동명이인(홍길동B)으로 처리되기 때문입니다.
+   (웹앱은 접속자 IP 를 볼 수 없어 IP 로는 구분하지 못합니다.) */
+function normName(v)  { return String(v == null ? '' : v).trim().replace(/\s+/g, ' '); }
+function normPhone(v) {
+  const d = String(v == null ? '' : v).replace(/\D/g, '');
+  return d ? ('0000' + d).slice(-4) : '';
+}
+// 시트의 이름은 동명이인 구분용 알파벳이 붙어 있을 수 있다 (홍길동, 홍길동B …)
+function nameRegex(raw) {
+  const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^' + esc + '([A-Z])?$');
+}
+function resumed(r) {
+  const saved = String(r[6] || '');
+  const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';   // 구버전 행 보호
+  const c = CONDITIONS.find(x => x.code === r[3] && (x.agents === 3 || x.persona === per)) ||
+            CONDITIONS.find(x => x.code === r[3]);
+  return { ok:true, participant_id:r[1], condition:c.code,
+           agents:c.agents, form:c.form, persona:c.persona || '', resumed:true };
+}
+
 function assign(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sh = sheet('assignments');
-    const rows = sh.getDataRange().getValues();          // [ts, pid, name, code, agents, form, ...]
+    const rows = sh.getDataRange().getValues();   // [시각, 번호, 이름, 조건, 면접관수, 형태, 페르소나, 브라우저, 순번, 뒷4자리]
 
-    // 재접속 : 기존 배정 유지
+    const name  = normName(body.name);
+    const phone = normPhone(body.phone4);
+    const known = !!(name && phone);              // 이름·뒷4자리를 함께 보냈는가
+    const re    = known ? nameRegex(name) : null;
+    const hasCond = r => CONDITIONS.some(x => x.code === r[3]);          // 마커 행 제외
+    const isSame  = r => known && normPhone(r[9]) === phone && re.test(normName(r[2]));
+    const isBlank = r => !normName(r[2]) && !normPhone(r[9]);
+
+    // 1) 같은 사람이 이미 배정돼 있으면 그 배정을 돌려준다 (여러 번이면 가장 먼저 받은 것).
+    if (known) {
+      for (let i = 1; i < rows.length; i++) {
+        if (hasCond(rows[i]) && isSame(rows[i])) return resumed(rows[i]);
+      }
+    }
+
+    // 2) 브라우저가 기억하는 번호. 그 행이 비어 있거나 본인 것일 때만 이어 간다.
+    //    다른 사람 이름이 적혀 있으면(한 기기를 여럿이 쓰는 경우) 새 참가자로 배정한다.
     if (body.participant_id) {
       for (let i = 1; i < rows.length; i++) {
-        if (rows[i][1] === body.participant_id) {
-          const saved = String(rows[i][6] || '');
-          const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';   // 구버전 행 보호
-          const c = CONDITIONS.find(x => x.code === rows[i][3] &&
-                                         (x.agents === 3 || x.persona === per)) ||
-                    CONDITIONS.find(x => x.code === rows[i][3]);
-          return { ok:true, participant_id:rows[i][1], condition:c.code,
-                   agents:c.agents, form:c.form, persona:c.persona || '', resumed:true };
+        if (rows[i][1] === body.participant_id && hasCond(rows[i])) {
+          if (!known || isBlank(rows[i]) || isSame(rows[i])) return resumed(rows[i]);
+          break;
         }
       }
     }
@@ -94,11 +129,17 @@ function assign(body) {
     const pool = CONDITIONS.filter(c => count[bucketKey(c)] === min);
     const picked = pool[Math.floor(Math.random() * pool.length)];
 
-    const pid = body.participant_id || nextPid(rows);
-    // 이름은 아직 모르므로 빈 칸으로 두고, 로그인 시 setName() 이 채웁니다.
-    // 이름·뒷4자리는 로그인 때 setName() 이 채웁니다.
+    // 번호는 항상 시트의 다음 번호. 브라우저가 보낸 번호가 시트에 없으면(테스트 때 저장된
+    // 번호 등) 쓰지 않는다 — 그대로 쓰면 P1005 처럼 순서에서 벗어난 번호가 생긴다.
+    const pid = nextPid(rows);
     sh.appendRow([new Date(), pid, '', picked.code, picked.agents, picked.form,
                   picked.persona || '', body.ua || '', min + 1, '']);
+    // 이름·뒷4자리를 배정과 동시에 적는다 — 다시 들어왔을 때 같은 사람인지 알아보는 열쇠.
+    if (known) {
+      const row = sh.getLastRow();
+      sh.getRange(row, 3).setValue(uniqueName(rows, -1, name));
+      sh.getRange(row, 10).setNumberFormat('@').setValue(phone);
+    }
 
     return { ok:true, participant_id:pid, condition:picked.code,
              agents:picked.agents, form:picked.form,
@@ -112,20 +153,23 @@ function assign(body) {
 /* 로그인 시 이름과 휴대전화 뒷 4자리를 배정 시트의 해당 참가자 행에 채웁니다.
    같은 이름이 이미 있으면 뒤에 알파벳을 붙여 시트에서 구분합니다.
      홍길동 → (두 번째) 홍길동B → (세 번째) 홍길동C …
-   먼저 들어온 사람의 이름은 그대로 두므로, 이미 내보낸 자료와 어긋나지 않습니다. */
+   먼저 들어온 사람의 이름은 그대로 두므로, 이미 내보낸 자료와 어긋나지 않습니다.
+   (뒷 4자리까지 같으면 같은 사람이므로 assign 이 새 행을 만들지 않습니다.)
+   selfRow 가 -1 이면 아직 시트에 없는 새 행의 이름을 정한다. */
 function uniqueName(rows, selfRow, raw) {
-  const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re  = new RegExp('^' + esc + '([A-Z])?$');
+  const re = nameRegex(raw);
 
   // 이 행에 이미 확정된 이름이 있으면 그대로 둔다.
   // (재접속할 때마다 새로 계산하면 다른 사람과 같은 글자를 받을 수 있다)
-  const cur = String(rows[selfRow][2] || '').trim();
-  if (cur && re.test(cur)) return cur;
+  if (selfRow >= 0) {
+    const cur = normName(rows[selfRow][2]);
+    if (cur && re.test(cur)) return cur;
+  }
 
   let n = 0;
   for (let i = 1; i < rows.length; i++) {
     if (i === selfRow) continue;
-    if (re.test(String(rows[i][2] || '').trim())) n++;
+    if (re.test(normName(rows[i][2]))) n++;
   }
   if (n === 0) return raw;
   return n <= 25 ? raw + String.fromCharCode(65 + n)   // B, C, … Z

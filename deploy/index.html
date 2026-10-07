@@ -791,8 +791,11 @@ async function autoAssign(attempt=1){
   const fromUrl = new URLSearchParams(location.search).get("participant_id") || "";
   $("pidShow").textContent = attempt===1 ? "배정 중…" : `연결 중… (${attempt}/3)`;
   try{
+    /* 이름·뒷4자리를 함께 보낸다 — 백엔드가 이것으로 같은 사람인지 알아보고,
+       다른 브라우저·기기로 다시 들어와도 처음 받은 번호·조건을 그대로 돌려준다. */
     const res = await callBackend({ action:"assign",
-      participant_id: fromUrl || saved, ua: navigator.userAgent });
+      participant_id: fromUrl || saved, ua: navigator.userAgent,
+      name: nameValue(), phone4: phoneValue() });
     if(!res.ok) throw new Error(res.error||"assign failed");
     pid = res.participant_id; condCode = res.condition;
     nAgents = res.agents; form = res.form;
