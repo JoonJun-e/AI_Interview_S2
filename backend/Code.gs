@@ -81,6 +81,60 @@ function resumed(r) {
            agents:c.agents, form:c.form, persona:c.persona || '', resumed:true };
 }
 
+/* ── 인원 세기 (2026-10-08) ─────────────────────────────
+   · 조건(C1~C6) 단위로 먼저 균등하게 채우고, Single 조건 안에서는 페르소나를 균등하게 나눈다.
+     (전에는 12칸을 똑같이 채워서 Single 조건이 Multi 조건의 3배씩 찼다)
+   · 인원으로 세는 것은 "면접을 마친 사람"과 "배정 후 HOLD_MIN 분이 안 된 사람(진행 중)"뿐이다.
+     배정만 받고 진행하지 않은 사람은 칸을 차지하지 않는다.
+     마친 사람 = uploads 탭에 7문항 녹음이 모두 있거나, logs 탭에 interview_end 가 있는 번호.
+   · 늦게 돌아온 사람은 이름 + 뒷 4자리로 원래 조건을 그대로 받는다 (위 assign 1단계). */
+const HOLD_MIN = 40;
+const CODES = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'];
+const QUESTION_KEYS = ['intro', '1-1', '1-2', '2-1', '2-2', '3-1', '3-2'];
+
+function finishedPids() {
+  const done = {}, keys = {};
+  const up = sheet('uploads').getDataRange().getValues();
+  for (let i = 1; i < up.length; i++) {
+    const pid = String(up[i][1] || '');
+    const m = String(up[i][6] || '').match(/_([^_]+)\.webm$/);      // P1101_single_avatar_middle_man_1-1.webm
+    const k = m ? m[1] : String(up[i][5] || '');
+    if (!pid || QUESTION_KEYS.indexOf(k) < 0) continue;
+    (keys[pid] = keys[pid] || {})[k] = true;
+  }
+  Object.keys(keys).forEach(p => {
+    if (Object.keys(keys[p]).length >= QUESTION_KEYS.length) done[p] = true;
+  });
+  const lg = sheet('logs'), last = lg.getLastRow();
+  if (last > 1) {
+    const v = lg.getRange(2, 2, last - 1, 5).getValues();           // B 참가자 … F 이벤트
+    for (let i = 0; i < v.length; i++) if (v[i][4] === 'interview_end') done[String(v[i][0])] = true;
+  }
+  return done;
+}
+
+function activeCounts(rows, now) {
+  const done = finishedPids();
+  const cell = {}, per = {};
+  CODES.forEach(c => cell[c] = 0);
+  CONDITIONS.forEach(c => { if (c.agents === 1) per[bucketKey(c)] = 0; });
+  let fin = 0, held = 0, idle = 0;
+  for (let i = 1; i < rows.length; i++) {
+    const code = String(rows[i][3] || '');
+    if (cell[code] === undefined) continue;                            // 마커 행 등
+    const pid = String(rows[i][1] || '');
+    const t = rows[i][0] instanceof Date ? rows[i][0].getTime() : NaN;
+    const isDone = !!done[pid];
+    const recent = !isDone && !isNaN(t) && now - t < HOLD_MIN * 60000;
+    if (!isDone && !recent) { idle++; continue; }                      // 배정만 받고 진행 안 함
+    if (isDone) fin++; else held++;
+    cell[code]++;
+    const k = code + '|' + String(rows[i][6] || '');
+    if (per[k] !== undefined) per[k]++;
+  }
+  return { cell, per, fin, held, idle };
+}
+
 function assign(body) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -114,20 +168,17 @@ function assign(body) {
       }
     }
 
-    // 버킷별 현재 인원 (코드 + 페르소나)
-    const count = {};
-    CONDITIONS.forEach(c => count[bucketKey(c)] = 0);
-    for (let i = 1; i < rows.length; i++) {
-      const saved = String(rows[i][6] || '');
-      const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';
-      const k = rows[i][3] + '|' + per;
-      if (count[k] !== undefined) count[k]++;
+    // 조건 단위 균등 → (Single 이면) 페르소나 균등. 같으면 무작위.
+    const ac = activeCounts(rows, Date.now());
+    const min = Math.min.apply(null, CODES.map(c => ac.cell[c]));
+    const codePool = CODES.filter(c => ac.cell[c] === min);
+    const code = codePool[Math.floor(Math.random() * codePool.length)];
+    let opts = CONDITIONS.filter(x => x.code === code);
+    if (opts.length > 1) {
+      const minP = Math.min.apply(null, opts.map(x => ac.per[bucketKey(x)]));
+      opts = opts.filter(x => ac.per[bucketKey(x)] === minP);
     }
-
-    // 가장 적은 버킷들 중 무작위
-    const min = Math.min.apply(null, CONDITIONS.map(c => count[bucketKey(c)]));
-    const pool = CONDITIONS.filter(c => count[bucketKey(c)] === min);
-    const picked = pool[Math.floor(Math.random() * pool.length)];
+    const picked = opts[Math.floor(Math.random() * opts.length)];
 
     // 번호는 항상 시트의 다음 번호. 브라우저가 보낸 번호가 시트에 없으면(테스트 때 저장된
     // 번호 등) 쓰지 않는다 — 그대로 쓰면 P1005 처럼 순서에서 벗어난 번호가 생긴다.
@@ -144,7 +195,7 @@ function assign(body) {
     return { ok:true, participant_id:pid, condition:picked.code,
              agents:picked.agents, form:picked.form,
              persona:picked.persona || '', resumed:false,
-             counts:count, target:TARGET_PER_CELL };
+             counts:ac.cell, target:TARGET_PER_CELL };
   } finally {
     lock.releaseLock();
   }
@@ -285,16 +336,8 @@ function json(obj) {
 /* ══════════ 배정 현황 확인용 (에디터에서 직접 실행) ══════════ */
 function 현황보기() {
   const rows = sheet('assignments').getDataRange().getValues();
-  const count = {};
-  CONDITIONS.forEach(c => count[bucketKey(c)] = 0);
-  for (let i = 1; i < rows.length; i++) {
-    const saved = String(rows[i][6] || '');
-    const per = PERSONAS.indexOf(saved) >= 0 ? saved : '';
-    const k = rows[i][3] + '|' + per;
-    if (count[k] !== undefined) count[k]++;
-  }
-  Logger.log('총 %s명', rows.length - 1);
-  CONDITIONS.forEach(c =>
-    Logger.log('%s (%s명 %s %s) : %s명', c.code, c.agents, c.form,
-               c.persona || '-', count[bucketKey(c)]));
+  const ac = activeCounts(rows, Date.now());
+  Logger.log('완료 %s명 · 진행 중 %s명 · 미진행(인원에서 제외) %s명', ac.fin, ac.held, ac.idle);
+  CODES.forEach(c => Logger.log('%s : %s명', c, ac.cell[c]));
+  Object.keys(ac.per).forEach(k => Logger.log('   %s : %s명', k, ac.per[k]));
 }
