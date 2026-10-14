@@ -113,8 +113,8 @@ function finishedPids() {
   return done;
 }
 
-function activeCounts(rows, now) {
-  const done = finishedPids();
+function activeCounts(rows, now, done) {
+  done = done || finishedPids();
   const cell = {}, per = {};
   CODES.forEach(c => cell[c] = 0);
   CONDITIONS.forEach(c => { if (c.agents === 1) per[bucketKey(c)] = 0; });
@@ -135,41 +135,60 @@ function activeCounts(rows, now) {
   return { cell, per, fin, held, idle };
 }
 
+/* 이미 배정된 행 찾기 — 같은 사람(이름 + 뒷4자리)이면 그 행, 아니면 브라우저가 기억하는 번호의 행.
+   브라우저 번호의 행에 다른 사람 이름이 적혀 있으면(한 기기를 여럿이 쓰는 경우) 찾지 않은 것으로 본다. */
+function findExisting(rows, body) {
+  const name  = normName(body.name);
+  const phone = normPhone(body.phone4);
+  const known = !!(name && phone);                // 이름·뒷4자리를 함께 보냈는가
+  const re    = known ? nameRegex(name) : null;
+  const hasCond = r => CONDITIONS.some(x => x.code === r[3]);          // 마커 행 제외
+  const isSame  = r => known && normPhone(r[9]) === phone && re.test(normName(r[2]));
+  const isBlank = r => !normName(r[2]) && !normPhone(r[9]);
+
+  // 1) 같은 사람이 이미 배정돼 있으면 그 행 (여러 번이면 가장 먼저 받은 것)
+  if (known) {
+    for (let i = 1; i < rows.length; i++) {
+      if (hasCond(rows[i]) && isSame(rows[i])) return rows[i];
+    }
+  }
+  // 2) 브라우저가 기억하는 번호. 그 행이 비어 있거나 본인 것일 때만 이어 간다.
+  if (body.participant_id) {
+    for (let i = 1; i < rows.length; i++) {
+      if (rows[i][1] === body.participant_id && hasCond(rows[i])) {
+        if (!known || isBlank(rows[i]) || isSame(rows[i])) return rows[i];
+        break;
+      }
+    }
+  }
+  return null;
+}
+
+/* 잠금은 새 행을 쓰는 순간에만 잡는다 (2026-10-13).
+   잠금을 잡은 요청이 구글 쪽에서 멈추면 그동안 잠금이 필요한 요청이 모두 20초 뒤 실패한다.
+   10/10 22:00 에 요청 하나가 6분간 멈춰, 그 사이 다시 접속한 참가자가 오류 화면만 보았다.
+   · 다시 들어온 사람은 시트를 읽기만 하므로 잠금 없이 돌려준다.
+   · 새 참가자의 인원 집계용 녹음·로그 탭 읽기도 잠금 밖에서 한다. */
 function assign(body) {
+  const sh = sheet('assignments');
+
+  // 1) 다시 들어온 사람 — 잠금 없음
+  const prev = findExisting(sh.getDataRange().getValues(), body);
+  if (prev) return resumed(prev);
+
+  // 2) 새 참가자 — 마친 사람 목록은 잠금 밖에서 미리 읽는다
+  const done = finishedPids();
+
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sh = sheet('assignments');
+    // 잠금 안에서 배정 시트를 다시 읽어, 그 사이 들어온 사람(같은 사람의 재시도 포함)을 반영한다
     const rows = sh.getDataRange().getValues();   // [시각, 번호, 이름, 조건, 면접관수, 형태, 페르소나, 브라우저, 순번, 뒷4자리]
-
-    const name  = normName(body.name);
-    const phone = normPhone(body.phone4);
-    const known = !!(name && phone);              // 이름·뒷4자리를 함께 보냈는가
-    const re    = known ? nameRegex(name) : null;
-    const hasCond = r => CONDITIONS.some(x => x.code === r[3]);          // 마커 행 제외
-    const isSame  = r => known && normPhone(r[9]) === phone && re.test(normName(r[2]));
-    const isBlank = r => !normName(r[2]) && !normPhone(r[9]);
-
-    // 1) 같은 사람이 이미 배정돼 있으면 그 배정을 돌려준다 (여러 번이면 가장 먼저 받은 것).
-    if (known) {
-      for (let i = 1; i < rows.length; i++) {
-        if (hasCond(rows[i]) && isSame(rows[i])) return resumed(rows[i]);
-      }
-    }
-
-    // 2) 브라우저가 기억하는 번호. 그 행이 비어 있거나 본인 것일 때만 이어 간다.
-    //    다른 사람 이름이 적혀 있으면(한 기기를 여럿이 쓰는 경우) 새 참가자로 배정한다.
-    if (body.participant_id) {
-      for (let i = 1; i < rows.length; i++) {
-        if (rows[i][1] === body.participant_id && hasCond(rows[i])) {
-          if (!known || isBlank(rows[i]) || isSame(rows[i])) return resumed(rows[i]);
-          break;
-        }
-      }
-    }
+    const again = findExisting(rows, body);
+    if (again) return resumed(again);
 
     // 조건 단위 균등 → (Single 이면) 페르소나 균등. 같으면 무작위.
-    const ac = activeCounts(rows, Date.now());
+    const ac = activeCounts(rows, Date.now(), done);
     const min = Math.min.apply(null, CODES.map(c => ac.cell[c]));
     const codePool = CODES.filter(c => ac.cell[c] === min);
     const code = codePool[Math.floor(Math.random() * codePool.length)];
@@ -186,7 +205,9 @@ function assign(body) {
     sh.appendRow([new Date(), pid, '', picked.code, picked.agents, picked.form,
                   picked.persona || '', body.ua || '', min + 1, '']);
     // 이름·뒷4자리를 배정과 동시에 적는다 — 다시 들어왔을 때 같은 사람인지 알아보는 열쇠.
-    if (known) {
+    const name  = normName(body.name);
+    const phone = normPhone(body.phone4);
+    if (name && phone) {
       const row = sh.getLastRow();
       sh.getRange(row, 3).setValue(uniqueName(rows, -1, name));
       sh.getRange(row, 10).setNumberFormat('@').setValue(phone);
@@ -228,6 +249,18 @@ function uniqueName(rows, selfRow, raw) {
 }
 
 function setName(body) {
+  // assign 이 배정과 동시에 이름·뒷4자리를 적어 두므로 대개 쓸 것이 없다 — 그때는 잠금 없이 끝낸다.
+  {
+    const raw0 = normName(body.name), ph0 = normPhone(body.phone4);
+    const rows0 = sheet('assignments').getDataRange().getValues();
+    for (let i = 1; i < rows0.length; i++) {
+      if (rows0[i][1] !== body.participant_id) continue;
+      const cur = normName(rows0[i][2]);
+      if (raw0 && ph0 && cur && nameRegex(raw0).test(cur) && normPhone(rows0[i][9]) === ph0)
+        return { ok:true, name:cur, phone4:ph0 };
+      break;
+    }
+  }
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {

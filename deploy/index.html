@@ -769,13 +769,20 @@ const fmt = s => String(Math.floor(Math.max(s,0)/60)).padStart(2,"0")+":"+String
    BACKEND_URL 이 비어 있으면 전부 건너뛰고 수동 모드로 동작합니다. */
 const backendOn = () => !!BACKEND_URL;
 let condCode="";                       // C1~C6
-async function callBackend(payload){
-  const r = await fetch(BACKEND_URL, {
-    method:"POST",
-    headers:{ "Content-Type":"text/plain;charset=utf-8" },   // preflight 회피
-    body: JSON.stringify(payload)
-  });
-  return r.json();
+/* 시간 제한 : 백엔드 한 실행이 멈춰 잠금을 쥐고 있으면 응답이 수 분간 안 올 수 있다.
+   기다리기만 하면 화면이 멈추므로 일정 시간이 지나면 끊고 실패로 처리한다(재시도·실패 처리는 호출한 쪽에서). */
+async function callBackend(payload, timeoutMs=30000){
+  const ctl = new AbortController();
+  const tid = setTimeout(()=>ctl.abort(), timeoutMs);
+  try{
+    const r = await fetch(BACKEND_URL, {
+      method:"POST",
+      headers:{ "Content-Type":"text/plain;charset=utf-8" },   // preflight 회피
+      body: JSON.stringify(payload),
+      signal: ctl.signal
+    });
+    return await r.json();
+  }finally{ clearTimeout(tid); }
 }
 
 /* 실험자 전용 모드 : 주소에 ?admin=1 을 붙였을 때만 수동 선택이 가능합니다.
@@ -786,16 +793,17 @@ const adminMode = new URLSearchParams(location.search).get("admin")==="1";
    같은 참가자가 새로고침하면 기존 조건을 그대로 받습니다. */
 /* 본실험용 키 : 테스트 때 저장된 P00xx 번호를 다시 쓰지 않도록 키를 바꿨습니다. */
 const PID_KEY = "ai_interview_pid_v2";
+const ASSIGN_TRIES = 6, ASSIGN_WAIT = [2,4,8,15,30];   // 초 — 서버가 잠깐 막혀도 약 1분은 버틴다
 async function autoAssign(attempt=1){
   const saved   = STICKY_ASSIGNMENT ? (localStorage.getItem(PID_KEY) || "") : "";
   const fromUrl = new URLSearchParams(location.search).get("participant_id") || "";
-  $("pidShow").textContent = attempt===1 ? "배정 중…" : `연결 중… (${attempt}/3)`;
+  $("pidShow").textContent = attempt===1 ? "배정 중…" : `연결 중… (${attempt}/${ASSIGN_TRIES})`;
   try{
     /* 이름·뒷4자리를 함께 보낸다 — 백엔드가 이것으로 같은 사람인지 알아보고,
        다른 브라우저·기기로 다시 들어와도 처음 받은 번호·조건을 그대로 돌려준다. */
     const res = await callBackend({ action:"assign",
       participant_id: fromUrl || saved, ua: navigator.userAgent,
-      name: nameValue(), phone4: phoneValue() });
+      name: nameValue(), phone4: phoneValue() }, 25000);
     if(!res.ok) throw new Error(res.error||"assign failed");
     pid = res.participant_id; condCode = res.condition;
     nAgents = res.agents; form = res.form;
@@ -805,11 +813,11 @@ async function autoAssign(attempt=1){
     addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
     return true;
   }catch(e){
-    if(attempt < 3){
-      await new Promise(r=>setTimeout(r, 1200*attempt));
+    if(attempt < ASSIGN_TRIES){
+      await new Promise(r=>setTimeout(r, 1000*ASSIGN_WAIT[attempt-1]));
       return autoAssign(attempt+1);
     }
-    /* 3회 실패 → 참가자는 진행 불가. 조건 선택 화면을 절대 노출하지 않는다. */
+    /* 6회 실패 → 참가자는 진행 불가. 조건 선택 화면을 절대 노출하지 않는다. */
     $("errDetail").textContent = "오류 코드: ASSIGN_FAILED";
     show("scr-error");
     return false;
@@ -927,7 +935,7 @@ $("btnLogin").onclick=async()=>{
   /* 시트에 같은 이름이 이미 있으면 백엔드가 알파벳을 붙여 돌려준다 (홍길동 → 홍길동B).
      녹음·로그에도 같은 이름이 찍히도록 돌아온 이름으로 바꿔 둔다. */
   if(backendOn() && pid) callBackend({ action:"name", participant_id:pid,
-                                       name:pname, phone4:phoneValue() })
+                                       name:pname, phone4:phoneValue() }, 25000)
     .then(r=>{ if(r && r.ok && r.name) pname=r.name; }).catch(()=>{});
   addLog("login",`agents=${nAgents};form=${form};cond=${condCode};persona=${nAgents===1?soloPersona:"-"}`);
   $("ntProcess").innerHTML = COPY[sufx()].process;
@@ -1609,7 +1617,7 @@ function uploadRecording(blob, filename, qkey){
     const b64=String(fr.result).split(",")[1];
     callBackend({ action:"upload", participant_id:pid, participant_name:pname, condition:condCode,
                   persona: nAgents===1 ? soloPersona : "",
-                  question:qkey, filename, mime:blob.type||"audio/webm", data:b64 })
+                  question:qkey, filename, mime:blob.type||"audio/webm", data:b64 }, 180000)
       .then(r=>{ r&&r.ok ? upStatus.ok++ : upStatus.fail++;
                  addLog("upload", `${filename}:${r&&r.ok?"ok":"fail"}`); })
       .catch(()=>{ upStatus.fail++; addLog("upload", `${filename}:fail`); })
@@ -1630,7 +1638,7 @@ function pushLogs(){
   logSent = log.length;
   return callBackend({ action:"log",
     rows: rows.map(r=>({ t:r.t, pid:r.pid, name:r.pname, cond:condCode||r.cond,
-                         q:r.q, event:r.event, extra:r.extra })) })
+                         q:r.q, event:r.event, extra:r.extra })) }, 45000)
     .catch(()=>{ logSent = from; });
 }
 
