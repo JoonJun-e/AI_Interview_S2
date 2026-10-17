@@ -92,8 +92,9 @@ const HOLD_MIN = 40;
 const CODES = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6'];
 const QUESTION_KEYS = ['intro', '1-1', '1-2', '2-1', '2-2', '3-1', '3-2'];
 
-function finishedPids() {
-  const done = {}, keys = {};
+// 번호별로 녹음이 올라간 문항 { P1101: { intro:true, '1-1':true, … } }
+function uploadedKeys() {
+  const keys = {};
   const up = sheet('uploads').getDataRange().getValues();
   for (let i = 1; i < up.length; i++) {
     const pid = String(up[i][1] || '');
@@ -102,6 +103,12 @@ function finishedPids() {
     if (!pid || QUESTION_KEYS.indexOf(k) < 0) continue;
     (keys[pid] = keys[pid] || {})[k] = true;
   }
+  return keys;
+}
+
+function finishedPids(keys) {
+  const done = {};
+  keys = keys || uploadedKeys();
   Object.keys(keys).forEach(p => {
     if (Object.keys(keys[p]).length >= QUESTION_KEYS.length) done[p] = true;
   });
@@ -174,7 +181,16 @@ function assign(body) {
 
   // 1) 다시 들어온 사람 — 잠금 없음
   const prev = findExisting(sh.getDataRange().getValues(), body);
-  if (prev) return resumed(prev);
+  if (prev) {
+    const out = resumed(prev);
+    const pid = String(prev[1]);
+    const keys = uploadedKeys();
+    // 이미 면접을 마친 번호면 알려 준다 — 화면은 면접을 다시 하지 않고 설문으로 보낸다 (2026-10-17)
+    out.finished = !!finishedPids(keys)[pid];
+    // 녹음이 올라간 문항 — 화면은 그다음 문항부터 이어서 진행한다 (2026-10-17)
+    out.done = QUESTION_KEYS.filter(k => (keys[pid] || {})[k]);
+    return out;
+  }
 
   // 2) 새 참가자 — 마친 사람 목록은 잠금 밖에서 미리 읽는다
   const done = finishedPids();

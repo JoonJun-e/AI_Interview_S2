@@ -310,6 +310,14 @@
     border-radius:10px;background:#fff7e6;border:1px solid #f3dca6;color:#8a5a00;
     font-size:14px;line-height:1.55;word-break:keep-all}
   .end-saving.on{display:block}
+  .end-alt{display:none;margin:18px auto 0;font-size:15px;color:var(--sub)}
+  .end-alt.on{display:block}
+  .end-alt a{color:#1a6dff;font-weight:700}
+  /* 면접 도중 끊겼다가 다시 들어온 사람에게 환경 설정 화면에서 보여 주는 안내 */
+  .resume-note{display:none;margin:14px 0 0;padding:12px 14px;border-radius:10px;
+    background:#eef4ff;border:1px solid #c9dafc;color:#1a4fb8;
+    font-size:14px;line-height:1.55;word-break:keep-all}
+  .resume-note.on{display:block}
   /* 저장 중에 설문으로 넘어가려 할 때 뜨는 확인 창 (1차 경고) */
   .confirm-mask{position:fixed;inset:0;z-index:60;display:none;
     align-items:center;justify-content:center;background:rgba(17,26,46,.55);padding:20px}
@@ -448,6 +456,7 @@
   <div class="card wide">
     <h1>환경 설정</h1>
     <p class="sub">카메라와 마이크를 확인합니다. 브라우저에서 권한 요청이 뜨면 <b>허용</b>을 눌러 주세요.</p>
+    <p class="resume-note" id="resumeNote"></p>
     <div class="divider"></div>
     <div class="setup-grid">
       <div class="setup-col">
@@ -565,6 +574,8 @@
     <h1 class="end-title">수고하셨습니다.<br>AI 면접이 종료되었습니다.</h1>
     <p class="end-pid" id="endPid"></p>
     <button class="btn end-btn" id="btnSurveyLink">설문하러 가기</button>
+    <p class="end-alt" id="surveyAlt">설문 창이 열리지 않았다면
+      <a id="surveyAltLink" href="#" target="_blank" rel="noopener">여기를 눌러 설문으로 이동</a>해 주세요.</p>
     <p class="end-saving" id="endSaving">답변을 저장하고 있습니다. 설문은 새 창에서 열리니,
       <b>저장이 끝날 때까지 이 창을 닫지 말아 주세요.</b></p>
 
@@ -793,6 +804,9 @@ const adminMode = new URLSearchParams(location.search).get("admin")==="1";
    같은 참가자가 새로고침하면 기존 조건을 그대로 받습니다. */
 /* 본실험용 키 : 테스트 때 저장된 P00xx 번호를 다시 쓰지 않도록 키를 바꿨습니다. */
 const PID_KEY = "ai_interview_pid_v2";
+let assignFinished=false;     // 백엔드가 "이미 면접을 마친 번호"라고 알려 주면 면접을 다시 하지 않고 설문 화면으로 보낸다
+let assignDone=[];            // 백엔드가 알려 준, 녹음이 이미 올라간 문항 (intro, 1-1 …)
+let startIdx=0;               // 면접을 시작할 문항 — 도중에 끊겼다 다시 들어오면 0 보다 크다
 const ASSIGN_TRIES = 6, ASSIGN_WAIT = [2,4,8,15,30];   // 초 — 서버가 잠깐 막혀도 약 1분은 버틴다
 async function autoAssign(attempt=1){
   const saved   = STICKY_ASSIGNMENT ? (localStorage.getItem(PID_KEY) || "") : "";
@@ -808,6 +822,8 @@ async function autoAssign(attempt=1){
     pid = res.participant_id; condCode = res.condition;
     nAgents = res.agents; form = res.form;
     if(res.persona) soloPersona = res.persona;
+    assignFinished = !!res.finished;
+    assignDone = Array.isArray(res.done) ? res.done : [];
     localStorage.setItem(PID_KEY, pid);
     $("pidShow").textContent = pid;
     addLog("assigned", `${condCode};agents=${nAgents};form=${form};persona=${nAgents===1?soloPersona:"-"}`);
@@ -932,6 +948,20 @@ $("btnLogin").onclick=async()=>{
     assigning=false; b.textContent=label; syncLoginBtn();
     if(!ok) return;
   }
+  /* 이미 면접을 마친 사람이 다시 들어온 경우 (2026-10-17)
+     설문 창을 못 열어서 다시 접속한 사람이 면접을 처음부터 또 보는 일이 있었다.
+     같은 번호로 녹음이 덮어써지지 않도록 바로 종료(설문) 화면으로 보낸다.
+     마지막 문항까지 녹음이 올라갔는데 중간 문항 하나만 업로드에 실패한 경우도 마친 것으로 본다. */
+  const lastDone = Math.max(-1, ...QUESTIONS.map((q,i)=>assignDone.includes(q.key) ? i : -1));
+  startIdx = lastDone + 1;
+  if(assignFinished || startIdx>=QUESTIONS.length){
+    addLog("login_after_finish",`cond=${condCode}`);
+    finished=true;
+    if($("endPid") && pid) $("endPid").textContent = `참가자 번호 ${pid}`;
+    show("scr-survey");
+    pushLogs();
+    return;
+  }
   /* 시트에 같은 이름이 이미 있으면 백엔드가 알파벳을 붙여 돌려준다 (홍길동 → 홍길동B).
      녹음·로그에도 같은 이름이 찍히도록 돌아온 이름으로 바꿔 둔다. */
   if(backendOn() && pid) callBackend({ action:"name", participant_id:pid,
@@ -943,6 +973,18 @@ $("btnLogin").onclick=async()=>{
   /* 조건이 정해진 지금부터 면접 영상을 전부 미리 받는다.
      안내 음성(약 106초) + 환경 설정 동안 받아 두면 면접 중에는 네트워크를 기다리지 않는다. */
   modePromise = resolveVideoMode().then(ok=>{ if(ok) prefetchPromise=prefetchMedia(); return ok; });
+  /* 면접 도중 끊겼다가 다시 들어온 경우 (2026-10-17)
+     녹음이 올라간 마지막 문항의 다음 문항부터 이어서 한다.
+     안내 음성은 이미 들었으므로 건너뛰지만, 카메라·마이크 권한은 새로 받아야 하므로 환경 설정부터 거친다. */
+  if(startIdx>0){
+    addLog("resume",`from=${QUESTIONS[startIdx].key};done=${assignDone.join(",")}`);
+    $("resumeNote").innerHTML = `앞서 진행하신 답변은 저장되어 있습니다. 카메라·마이크를 확인하면
+      전체 ${QUESTIONS.length}개 질문 중 <b>${startIdx+1}번째 질문부터 이어서</b> 진행합니다.`;
+    $("resumeNote").classList.add("on");
+    $("btnToInterview").textContent="면접 이어서 하기";
+    show("scr-setup");
+    return;
+  }
   show("scr-intro");
   playNoticeAudio();
 };
@@ -956,7 +998,7 @@ const BLOB={};                               // 원래 주소 → blob: 주소
 const mediaSrc = u => BLOB[u] || u;          // 받아 둔 게 있으면 그것을, 없으면 네트워크 주소
 async function prefetchMedia(){
   const list=[];
-  QUESTIONS.forEach(q=>list.push(TALK_VIDEO(q)));
+  QUESTIONS.slice(startIdx).forEach(q=>list.push(TALK_VIDEO(q)));   // 이어서 하는 경우 남은 문항만
   const n = nAgents===3 ? 3 : 1;
   for(let i=0;i<n;i++){ list.push(IDLE_VIDEO(i)); list.push(WAIT_VIDEO(i)); }
   const uniq=[...new Set(list)];
@@ -1147,17 +1189,18 @@ $("btnToInterview").onclick=async ()=>{
    배경은 첫 문항 담당 면접관이 이미 메인에 있는 배치로 맞춘다.
    (카운트다운 후 배치가 갑자기 바뀌는 것을 방지) */
 function startCountdown(){
-  if(form!=="x" && nAgents===3) focusAgent(seatOf(QUESTIONS[0].agent));
+  idx = startIdx - 1;                 // nextQuestion() 이 하나 올려 startIdx 번째 문항부터 시작한다
+  if(form!=="x" && nAgents===3) focusAgent(seatOf(QUESTIONS[startIdx].agent));
   setPhase("면접 준비");
-  $("qtext").textContent="잠시 후 면접이 시작됩니다.";
+  $("qtext").textContent = startIdx>0 ? "잠시 후 면접을 이어서 진행합니다." : "잠시 후 면접이 시작됩니다.";
   $("tval").textContent="--:--";
   let left=START_COUNT;
   $("prepCount").textContent=left;
   pauseIdles();                       // 블러 뒤 배경은 정적 이미지
   $("stageInner").classList.add("blurred");
   $("prepOverlay").classList.add("on");
-  primeTalk(0);                       // 블러 뒤에서 첫 질문 영상 첫 프레임으로 바꿔 둠
-  addLog("start_countdown",`sec=${START_COUNT}`);
+  primeTalk(startIdx);                // 블러 뒤에서 첫 질문 영상 첫 프레임으로 바꿔 둠
+  addLog("start_countdown",`sec=${START_COUNT};from=${QUESTIONS[startIdx].key}`);
   const iv=setInterval(()=>{
     left--;
     if(left>0){ $("prepCount").textContent=left; return; }
@@ -1235,7 +1278,7 @@ function buildRoom(){
   $("subRail").style.display = n>1 ? "flex" : "none";
   focusAgent(0);
   playIdles();
-  preloadTalk(0);                 // 첫 문항 영상은 카운트다운 동안 받아 둔다
+  preloadTalk(startIdx);          // 첫 문항 영상은 카운트다운 동안 받아 둔다
 }
 
 /* 대기 영상 재생 · 재개
@@ -1828,7 +1871,17 @@ if($("expToggle")) $("expToggle").onclick=e=>{ e.preventDefault(); $("expPanel")
 function openSurvey(){
   addLog("survey_opened");
   const url=surveyUrl();
-  if(url){ window.open(url,"_blank"); return; }
+  if(url){
+    /* 일부 브라우저(앱 안의 브라우저 등)는 새 창 열기를 막는다 (2026-10-17).
+       ① 새 창이 막히면, 저장할 녹음이 남아 있지 않을 때에 한해 이 창에서 바로 설문으로 이동한다.
+       ② 어느 경우든 버튼 아래에 설문 링크를 따로 보여 준다 (직접 누를 수 있게). */
+    const w=window.open(url,"_blank");
+    addLog("survey_window", w ? "opened" : "blocked");
+    $("surveyAltLink").href=url; $("surveyAlt").classList.add("on");
+    pushLogs();
+    if(!w && upPending<=0) setTimeout(()=>{ location.href=url; }, 400);
+    return;
+  }
   $("btnSurveyLink").disabled=true;
   $("btnSurveyLink").textContent="실험자 안내를 기다려 주세요";
 }
